@@ -126,7 +126,7 @@ Quantum-Control-Project/
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/<your-username>/Quantum-Control-Project.git
+git clone https://github.com/Yiannosste/Quantum-Control-Project.git
 cd Quantum-Control-Project
 
 # 2. Create a virtual environment
@@ -204,16 +204,6 @@ After ~200 k timesteps of PPO training:
 | [Stable-Baselines3](https://stable-baselines3.readthedocs.io) | PPO implementation |
 | [NumPy](https://numpy.org) | Numerical computation |
 | [Matplotlib](https://matplotlib.org) | Visualization (Bloch sphere, pulse plots) |
-
----
-
-## Relevance to Industry
-
-This project directly addresses challenges at the frontier of quantum computing hardware:
-
-- **IQM** — Uses optimal control and calibration loops for superconducting transmon qubits; RL-based methods are an active research area.
-- **Alice & Bob** — Cat-qubit architectures require non-trivial pulse engineering; RL generalizes to non-standard qubit manifolds.
-- **IBM / Google** — DRAG (Derivative Removal via Adiabatic Gate) pulses are calibrated continuously; RL can replace manual calibration.
 
 ---
 
