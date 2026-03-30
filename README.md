@@ -224,4 +224,4 @@ MIT License. See `LICENSE` for details.
 
 ---
 
-*Built as a portfolio project for Quantum Engineering internship applications.*
+*Built as part of a Quantum Engineering portfolio project.*
