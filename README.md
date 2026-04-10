@@ -8,7 +8,7 @@
 
 This project demonstrates how a **Proximal Policy Optimization (PPO)** agent can learn to shape a microwave control pulse that steers a superconducting qubit from the ground state |0⟩ to the excited state |1⟩ (an X-gate), while:
 
-- maximizing **gate fidelity** (> 99 % target),
+- maximizing **gate fidelity**,
 - minimizing **pulse energy** (leakage & heating concern), and
 - operating under **open-system decoherence** (T1 relaxation + T2 dephasing).
 
@@ -186,8 +186,8 @@ After ~200 k timesteps of PPO training:
 
 | Metric | Value |
 |--------|-------|
-| Mean gate fidelity | > 0.97 |
-| Best gate fidelity | > 0.99 |
+| Mean gate fidelity | ~ 0.97 |
+| Best gate fidelity | ~ 0.97 |
 | Gate time | 50 ns |
 | Policy architecture | MLP [64, 64] |
 

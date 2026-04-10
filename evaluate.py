@@ -124,7 +124,7 @@ def main():
 
     # ── Save summary ──────────────────────────────────────────────────────
     summary_path = os.path.join(args.results_dir, "eval_summary.txt")
-    with open(summary_path, "w") as f:
+    with open(summary_path, "w", encoding="utf-8") as f:
         f.write("RL Quantum Pulse Optimization — Evaluation Summary\n")
         f.write("=" * 50 + "\n")
         f.write(f"Model       : {model_path}\n")
