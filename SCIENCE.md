@@ -167,7 +167,10 @@ decoherence exposure.
 | Reward $r_t$ | $r_t = -\lambda\Omega(t)^2$, plus $+F(\rho_T,\lvert1\rangle)$ only at the final step | `step()` |
 | Episode | $N=50$ steps $\times$ $dt=1$ ns $=$ 50 ns gate | `n_steps`, `dt` |
 
-$$r_t = \begin{cases} -\lambda\Omega(t)^2 & t < T \\ -\lambda\Omega(t)^2 + F(\rho_T, \lvert1\rangle) & t = T \end{cases}$$
+The reward splits into two cases by time step:
+
+- **Every step before the last** ($t < T$): $r_t = -\lambda\Omega(t)^2$ — energy penalty only.
+- **The final step** ($t = T$): $r_t = -\lambda\Omega(t)^2 + F(\rho_T, \lvert1\rangle)$ — energy penalty plus the fidelity bonus.
 
 with $\lambda=0.01$ by default (`energy_penalty`). This reward is
 Markovian in the Bloch vector because the Lindblad equation is itself a
