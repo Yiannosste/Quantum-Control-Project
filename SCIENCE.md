@@ -141,21 +141,6 @@ $$F(\rho, \lvert\psi_{\text{target}}\rangle) = \langle\psi_{\text{target}}\rvert
 For the X-gate, $\lvert\psi_{\text{target}}\rangle = \lvert1\rangle$, so $F$
 is exactly the excited-state population at the end of the gate.
 
-**Verified plausibility of the README's expected results.** Driving the
-*default, noisy* environment ($T_1=1000$ ns, $T_2=500$ ns) with the
-analytically-derived constant π-pulse ($\Omega=\pi/50$) — i.e. no RL, no
-pulse shaping — already yields
-
-```
-fidelity ≈ 0.9723
-```
-
-This is direct evidence that the README's "~0.97 mean fidelity" target for a
-*trained* agent is physically reasonable: a naive constant pulse already
-lands almost exactly there, and a shaped pulse (what PPO is trained to find)
-has room to match or modestly exceed it by trading off energy penalty and
-decoherence exposure.
-
 ---
 
 ## 4. MDP Formulation
@@ -224,9 +209,8 @@ Being transparent about what this model does *not* capture:
   the "ns" / "MHz" labels as illustrative scale, not as dimensionally
   rigorous SI units.
 - **"Expected" results are exactly that.** The ~0.97 fidelity figure in the
-  README is a target based on the physics of the problem (Section 3 above),
-  not a fixed guarantee — actual results after running `train.py` will vary
-  with the random seed and training budget.
+  README is a target, not a fixed guarantee — actual results after running
+  `train.py` will vary with the random seed and training budget.
 
 ---
 
