@@ -20,7 +20,7 @@ two-level system with basis states $|0\rangle$ (ground) and $|1\rangle$
 Any single-qubit state can be written as a point on (pure states) or inside
 (mixed states) the **Bloch sphere**:
 
-$$\rho = \frac{1}{2}\left(I + x\,\sigma_x + y\,\sigma_y + z\,\sigma_z\right), \qquad (x,y,z) = (\langle\sigma_x\rangle,\ \langle\sigma_y\rangle,\ \langle\sigma_z\rangle)$$
+$$\rho = \frac{1}{2}\left(I + x\sigma_x + y\sigma_y + z\sigma_z\right), \qquad (x,y,z) = (\langle\sigma_x\rangle, \langle\sigma_y\rangle, \langle\sigma_z\rangle)$$
 
 This repository follows the standard convention where $|0\rangle$ and
 $|1\rangle$ are the $+1$ and $-1$ eigenstates of $\sigma_z$, respectively.
@@ -49,7 +49,7 @@ In the rotating-wave approximation (RWA), in a frame rotating at the drive
 frequency, the Hamiltonian splits into a drift term and a control term
 (`utils.py: build_hamiltonians`):
 
-$$H(t) = \underbrace{\frac{\omega_q}{2}\,\sigma_z}_{H_0 \text{ (drift)}} \;+\; \underbrace{\Omega(t)\cdot\frac{1}{2}\sigma_x}_{H_c \text{ (control)}}$$
+$$H(t) = \underbrace{\frac{\omega_q}{2}\sigma_z}_{H_0 \text{ (drift)}} + \underbrace{\Omega(t)\cdot\frac{1}{2}\sigma_x}_{H_c \text{ (control)}}$$
 
 - $\omega_q$: qubit transition frequency in the rotating frame. The code sets
   `omega_q = 0.0` (`QUBIT_PARAMS`), i.e. the drive is assumed perfectly
@@ -62,12 +62,12 @@ $$H(t) = \underbrace{\frac{\omega_q}{2}\,\sigma_z}_{H_0 \text{ (drift)}} \;+\; \
 ### 1.3 Resonant (Rabi) rotation and the π-pulse condition
 
 With $\omega_q=0$, a constant drive $\Omega$ applied for a duration $t$
-generates the unitary $U(t)=\exp(-i\,\Omega t\,\sigma_x/2)$, which rotates
+generates the unitary $U(t)=\exp(-i\Omega t\sigma_x/2)$, which rotates
 the Bloch vector by angle $\theta=\Omega t$ about the X-axis. A full
 population transfer $|0\rangle\to|1\rangle$ (an ideal, noise-free X-gate)
 therefore requires
 
-$$\Omega\, t_\pi = \pi \quad\Longrightarrow\quad \Omega = \frac{\pi}{t_\pi}$$
+$$\Omega \cdot t_\pi = \pi \quad\Longrightarrow\quad \Omega = \frac{\pi}{t_\pi}$$
 
 **Verified against the code.** For the default 50 ns gate
 (`n_steps=50`, `dt=1.0`), this predicts $\Omega=\pi/50\approx0.0628$. Driving
@@ -91,7 +91,7 @@ Real qubits are not isolated — they exchange energy and phase information
 with their electromagnetic environment. This is modeled with the Lindblad
 (GKSL) master equation for the density matrix $\rho$:
 
-$$\frac{d\rho}{dt} = -i[H(t), \rho] \;+\; \sum_k \left( L_k \rho L_k^\dagger - \frac{1}{2}\{L_k^\dagger L_k,\ \rho\} \right)$$
+$$\frac{d\rho}{dt} = -i[H(t), \rho] + \sum_k \left( L_k \rho L_k^\dagger - \frac{1}{2}\{L_k^\dagger L_k, \rho\} \right)$$
 
 The first term is unitary evolution under $H(t)$; the sum models
 dissipation through collapse (Lindblad/jump) operators $L_k$.
@@ -102,16 +102,16 @@ Two decoherence channels are modeled:
 
 | Channel | Operator | Rate | Physical meaning |
 |---|---|---|---|
-| $T_1$ relaxation | $L_1=\sqrt{\Gamma_1}\,\sigma_-$ | $\Gamma_1 = 1/T_1$ | Spontaneous decay $\lvert1\rangle\to\lvert0\rangle$ |
-| $T_2$ dephasing | $L_2=\sqrt{\Gamma_\phi}\,\sigma_z/2$ | $\Gamma_\phi = \dfrac{1}{T_2}-\dfrac{\Gamma_1}{2}$ | Random phase drift, no population change |
+| $T_1$ relaxation | $L_1=\sqrt{\Gamma_1}\sigma_-$ | $\Gamma_1 = 1/T_1$ | Spontaneous decay $\lvert1\rangle\to\lvert0\rangle$ |
+| $T_2$ dephasing | $L_2=\sqrt{\Gamma_\phi}\sigma_z/2$ | $\Gamma_\phi = \frac{1}{T_2}-\frac{\Gamma_1}{2}$ | Random phase drift, no population change |
 
 where $\sigma_- = \lvert0\rangle\langle1\rvert$ is implemented as
 `qt.destroy(2)`, the qubit lowering operator.
 
 The rate relation $\Gamma_\phi = 1/T_2 - 1/(2T_1)$ comes from decomposing the
-standard total dephasing rate $1/T_2 = 1/(2T_1) + 1/T_2^{*}$ (energy decay
+standard total dephasing rate $1/T_2 = 1/(2T_1) + 1/T_2^{\ast}$ (energy decay
 also destroys phase coherence at half its rate) and identifying
-$\Gamma_\phi = 1/T_2^{*}$. **Physical constraint:** this requires
+$\Gamma_\phi = 1/T_2^{\ast}$. **Physical constraint:** this requires
 $T_2 \le 2T_1$; the code enforces $\Gamma_\phi\ge0$ via a `max(..., 0.0)`
 clamp. The default parameters $T_1=1000$ ns, $T_2=500$ ns satisfy this with
 margin ($500 \le 2000$).
@@ -136,7 +136,7 @@ section 2).
 State fidelity against a pure target $\lvert\psi_{\text{target}}\rangle$
 (`utils.py: compute_fidelity`):
 
-$$F(\rho, \lvert\psi_{\text{target}}\rangle) = \langle\psi_{\text{target}}\rvert\, \rho \,\lvert\psi_{\text{target}}\rangle \in [0, 1]$$
+$$F(\rho, \lvert\psi_{\text{target}}\rangle) = \langle\psi_{\text{target}}\rvert \rho \lvert\psi_{\text{target}}\rangle \in [0, 1]$$
 
 For the X-gate, $\lvert\psi_{\text{target}}\rangle = \lvert1\rangle$, so $F$
 is exactly the excited-state population at the end of the gate.
@@ -163,11 +163,11 @@ decoherence exposure.
 | Component | Definition | Code |
 |---|---|---|
 | State $s_t$ | Bloch vector $[\langle\sigma_x\rangle,\langle\sigma_y\rangle,\langle\sigma_z\rangle]\in[-1,1]^3$ | `_get_obs()` |
-| Action $a_t$ | $a_t\in[-1,1]\ \to\ \Omega(t)=a_t\cdot\Omega_{\max}$ | `step()` |
-| Reward $r_t$ | $r_t = -\lambda\,\Omega(t)^2$, plus $+F(\rho_T,\lvert1\rangle)$ only at the final step | `step()` |
-| Episode | $N=50$ steps $\times\ dt=1$ ns $=$ 50 ns gate | `n_steps`, `dt` |
+| Action $a_t$ | $a_t\in[-1,1] \to \Omega(t)=a_t\cdot\Omega_{\max}$ | `step()` |
+| Reward $r_t$ | $r_t = -\lambda\Omega(t)^2$, plus $+F(\rho_T,\lvert1\rangle)$ only at the final step | `step()` |
+| Episode | $N=50$ steps $\times$ $dt=1$ ns $=$ 50 ns gate | `n_steps`, `dt` |
 
-$$r_t = \begin{cases} -\lambda\,\Omega(t)^2 & t < T \\[4pt] -\lambda\,\Omega(t)^2 \;+\; F(\rho_T, \lvert1\rangle) & t = T \end{cases}$$
+$$r_t = \begin{cases} -\lambda\Omega(t)^2 & t < T \\ -\lambda\Omega(t)^2 + F(\rho_T, \lvert1\rangle) & t = T \end{cases}$$
 
 with $\lambda=0.01$ by default (`energy_penalty`). This reward is
 Markovian in the Bloch vector because the Lindblad equation is itself a
@@ -196,7 +196,7 @@ the policy-gradient update to prevent destructively large steps, which
 matters when the reward signal is sparse (the fidelity bonus only arrives at
 the last step of each 50-step episode):
 
-$$L^{\text{CLIP}}(\theta) = \hat{\mathbb{E}}_t\left[\min\Big(r_t(\theta)\hat{A}_t,\ \operatorname{clip}(r_t(\theta),\,1-\epsilon,\,1+\epsilon)\hat{A}_t\Big)\right]$$
+$$L^{\text{CLIP}}(\theta) = \hat{\mathbb{E}}_t\left[\min\Big(r_t(\theta)\hat{A}_t, \text{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon)\hat{A}_t\Big)\right]$$
 
 This is a training-stability statement about PPO in general, not a claim
 re-derived from this project's specific results.
