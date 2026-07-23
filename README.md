@@ -18,6 +18,9 @@ The qubit dynamics are simulated with **QuTiP** using the Lindblad master equati
 
 ## Physics Background
 
+> This section is a summary. For the full derivations, worked numerical
+> checks, and explicitly-noted simplifications, see [SCIENCE.md](SCIENCE.md).
+
 ### Two-Level System Hamiltonian
 
 In the rotating-wave approximation (RWA) at resonance, the system Hamiltonian splits into:
@@ -111,7 +114,9 @@ Quantum-Control-Project/
 │
 ├── logs/                # TensorBoard logs (created at runtime)
 ├── requirements.txt
-└── README.md
+├── README.md
+├── SCIENCE.md           # Detailed physics & RL derivations, verified against the code
+└── LICENSE
 ```
 
 ---
@@ -120,7 +125,10 @@ Quantum-Control-Project/
 
 ### Prerequisites
 - Python 3.9 – 3.11
-- (Recommended) NVIDIA GPU with CUDA for faster SB3 training
+- No GPU required — the policy network is a small [64, 64] MLP over a 3-D
+  state space, which trains fast on CPU. A GPU generally will not speed up
+  training for a model this small (and may even be slower due to
+  host↔device transfer overhead).
 
 ### Setup
 

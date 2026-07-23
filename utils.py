@@ -166,7 +166,7 @@ def plot_pulse_and_bloch(
     # Start / end markers
     ax_bloch.scatter(*trajectory[0],  color="green",  s=80, zorder=5, label="|0⟩ start")
     ax_bloch.scatter(*trajectory[-1], color="red",    s=80, zorder=5, label="|1⟩ end")
-    ax_bloch.scatter(0, 0, 1,         color="gold",   s=60, zorder=5,
+    ax_bloch.scatter(0, 0, -1,        color="gold",   s=60, zorder=5,
                      marker="*", label="|1⟩ target")
 
     ax_bloch.set_xlabel("X", fontsize=10)
@@ -196,9 +196,11 @@ def _draw_bloch_sphere(ax):
     ax.plot_wireframe(x, y, z, color="lightgray", linewidth=0.4, alpha=0.5)
 
     # Axes lines
+    # Note: with sigma_z eigenstates basis(2,0)=|0> and basis(2,1)=|1>,
+    # <sigma_z> = +1 at |0> (north pole) and -1 at |1> (south pole).
     for vec, label in [([1,0,0],"|+X⟩"), ([-1,0,0],"|−X⟩"),
                         ([0,1,0],"|+Y⟩"), ([0,-1,0],"|−Y⟩"),
-                        ([0,0,1],"|1⟩"),  ([0,0,-1],"|0⟩")]:
+                        ([0,0,1],"|0⟩"),  ([0,0,-1],"|1⟩")]:
         ax.plot([0, vec[0]*1.15], [0, vec[1]*1.15], [0, vec[2]*1.15],
                 color="gray", linewidth=0.6, linestyle="--")
         ax.text(vec[0]*1.2, vec[1]*1.2, vec[2]*1.2, label, fontsize=7,
