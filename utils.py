@@ -3,89 +3,144 @@ utils.py
 --------
 Physics helpers: Hamiltonians, collapse operators, fidelity, and plotting.
 
-Physical model
---------------
-Drift Hamiltonian  (lab-frame, rotating-wave approximation):
-    H0 = (omega_q / 2) * sigma_z
+Physical model (weakly-anharmonic transmon, truncated to `num_levels`
+levels — 3 by default: |0>, |1>, |2>)
+--------------------------------------------------------------------
+Drift Hamiltonian, in the frame rotating at the drive frequency:
+    H0 = -Delta * n  +  (alpha/2) * n * (n - 1)
+where n = a^dag a is the number operator, Delta is the qubit-drive
+detuning, and alpha < 0 is the anharmonicity (the |1>-|2> transition sits
+alpha below the |0>-|1> transition, as in a real transmon). At n=0,1 the
+anharmonic term vanishes identically; at n=2 it contributes exactly alpha,
+so |2> is detuned by alpha from where a perfectly harmonic ladder would
+put it. This is what makes a resonant |0>-|1> drive only weakly leak
+population into |2> rather than resonantly driving it.
 
-Control Hamiltonian (resonant microwave drive):
-    Hc = (1/2) * sigma_x
+Control Hamiltonian (I/Q microwave drive, resonant with the 0-1 transition):
+    Hx = (a + a^dag) / 2      (in-phase / "I" quadrature)
+    Hy = i(a^dag - a) / 2     (quadrature / "Q" quadrature)
+    H(t) = H0 + Omega_x(t) Hx + Omega_y(t) Hy
 
-Full Hamiltonian:
-    H(t) = H0 + Omega(t) * Hc
+Driving only Hx (Omega_y=0) is what a naive two-level pulse does; because
+`a` couples every adjacent pair of levels, this also drives 1<->2 (leakage).
+The Q quadrature is exactly the extra control real hardware uses for DRAG
+(Derivative Removal by Adiabatic Gate, Motzoi et al. 2009) to cancel that
+leakage to leading order — this project's RL agent is given that same
+control and has to learn to use it, rather than being handed the DRAG
+formula directly.
+
+Truncating to num_levels=2 recovers the standard two-level qubit model exactly:
+a -> sigma_minus, Hx -> sigma_x/2, and Hy/leakage become moot.
 
 Open-system Lindblad terms:
-    T1  (energy relaxation) : c1 = sqrt(1/T1) * sigma_minus
-    T2* (pure dephasing)    : c2 = sqrt(1/T_phi) * sigma_z / 2
-    where  1/T2 = 1/(2*T1) + 1/T_phi
+    T1  (energy relaxation) : c1 = sqrt(1/T1) * a
+        Because <n|a|n> has matrix element sqrt(n) between adjacent levels,
+        this gives Gamma(1->0) = 1/T1 and Gamma(2->1) = 2/T1 automatically
+        — the standard "harmonic-oscillator" scaling assumed for a weakly
+        anharmonic transmon absent a separately-measured T1 for |2>.
+    T2* (pure dephasing)    : c2 = sqrt(2/T_phi) * n / 2  ==  sqrt(1/(2*T_phi)) * n
+        where  1/T2 = 1/(2*T1) + 1/T_phi
+        (see the note on the prefactor below for why this specific form).
 
-All frequencies in units of 2pi * MHz, times in ns.
+All frequencies in units of rad/ns (equivalently 2*pi*GHz); times in ns.
+This is dimensionally literal, not a "natural units" rescaling: e.g.
+omega_max=0.35 rad/ns is exactly a 2*pi*55.7 MHz Rabi rate, consistent with
+real transmon single-qubit drive strengths.
+
+Note on the T2 collapse-operator prefactor
+-------------------------------------------
+The dephasing prefactor here is sqrt(2*Gamma_phi), not the naively-transplanted
+two-level form sqrt(Gamma_phi) * sigma_z / 2 (whose coherence-decay rate is
+only Gamma_phi/2, not Gamma_phi -- it would make the simulated T2 come out
+2x longer than the T1/T2 values in QUBIT_PARAMS claim). Verified by measuring
+the coherence decay of an equal superposition state directly under each
+candidate operator: this prefactor reproduces the labeled T2 to 4 significant
+figures. See SCIENCE.md, Section 2, for the full derivation and the
+verification numbers.
 """
 
 import numpy as np
 import qutip as qt
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
-from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 
 
 # ── Default physical parameters ───────────────────────────────────────────────
 QUBIT_PARAMS = {
-    "omega_q": 0.0,    # qubit frequency in rotating frame [2pi * MHz]
-                       # (set to 0 → perfect resonance; add detuning to explore)
-    "T1": 1000.0,      # energy relaxation time  [ns]  (~1 µs typical transmon)
-    "T2": 500.0,       # total dephasing time    [ns]  (~500 ns typical)
+    "omega_q": 0.0,     # qubit-drive detuning [rad/ns] (0 -> perfect resonance)
+    "T1": 1000.0,       # energy relaxation time  [ns]  (~1 us typical transmon)
+    "T2": 500.0,        # total dephasing time    [ns]  (~500 ns typical)
+    "alpha": -1.5708,   # anharmonicity [rad/ns] = -2*pi*250 MHz, typical transmon
+    "num_levels": 3,    # |0>, |1>, |2> (leakage-capable transmon model)
 }
 
 
 # ── Hamiltonian construction ──────────────────────────────────────────────────
 
-def build_hamiltonians(params: dict = None) -> tuple:
+def build_hamiltonians(params: dict = None, num_levels: int = None) -> tuple:
     """
-    Returns (H0, Hc) as QuTiP Qobj operators.
+    Returns (H0, Hx, Hy) as QuTiP Qobj operators on a `num_levels`-dimensional
+    truncated Hilbert space.
 
-    H0 : drift (qubit frequency term)
-    Hc : control (microwave drive coupling)
+    H0 : drift (detuning + anharmonicity)
+    Hx : in-phase ("I") control coupling
+    Hy : quadrature ("Q") control coupling
     """
     if params is None:
         params = QUBIT_PARAMS
+    if num_levels is None:
+        num_levels = params.get("num_levels", 3)
 
-    omega_q = params.get("omega_q", 0.0)
+    detuning = params.get("omega_q", 0.0)
+    alpha = params.get("alpha", 0.0)
 
-    H0 = (omega_q / 2.0) * qt.sigmaz()   # drift
-    Hc = 0.5 * qt.sigmax()               # control coupling
-    return H0, Hc
+    a = qt.destroy(num_levels)
+    n = a.dag() * a
+
+    H0 = -detuning * n + (alpha / 2.0) * n * (n - 1)
+    Hx = 0.5 * (a + a.dag())
+    Hy = 0.5 * 1j * (a.dag() - a)
+    return H0, Hx, Hy
 
 
 # ── Lindblad collapse operators ───────────────────────────────────────────────
 
-def build_collapse_operators(params: dict = None) -> list:
+def build_collapse_operators(params: dict = None, num_levels: int = None) -> list:
     """
-    Returns a list of QuTiP collapse operators for T1 and T2 processes.
+    Returns a list of QuTiP collapse operators for T1 and T2 processes on a
+    `num_levels`-dimensional truncated Hilbert space.
 
-    c1 = sqrt(Gamma1) * sigma_minus   (amplitude damping / energy relaxation)
-    c2 = sqrt(Gamma_phi) * sigma_z/2  (pure dephasing)
+    c1 = sqrt(Gamma1) * a        (amplitude damping, n-scaled: 2->1 decays
+                                   twice as fast as 1->0, per <n|a|n-1>=sqrt(n))
+    c2 = sqrt(2*Gamma_phi) * n/2 (pure dephasing; see module docstring for
+                                   why the prefactor is sqrt(2*Gamma_phi) and
+                                   not sqrt(Gamma_phi))
 
     where:
-        Gamma1   = 1 / T1
-        Gamma2   = 1 / T2
+        Gamma1    = 1 / T1
+        Gamma2    = 1 / T2
         Gamma_phi = Gamma2 - Gamma1/2   (pure dephasing rate)
     """
     if params is None:
         params = QUBIT_PARAMS
+    if num_levels is None:
+        num_levels = params.get("num_levels", 3)
 
-    T1  = params.get("T1", 1e6)   # very long if not specified
-    T2  = params.get("T2", 1e6)
+    T1 = params.get("T1", 1e6)   # very long if not specified
+    T2 = params.get("T2", 1e6)
 
-    Gamma1   = 1.0 / T1
-    Gamma2   = 1.0 / T2
+    Gamma1 = 1.0 / T1
+    Gamma2 = 1.0 / T2
     Gamma_phi = max(Gamma2 - Gamma1 / 2.0, 0.0)  # must be non-negative
+
+    a = qt.destroy(num_levels)
+    n = a.dag() * a
 
     c_ops = []
     if Gamma1 > 0:
-        c_ops.append(np.sqrt(Gamma1) * qt.destroy(2))          # sigma_minus
+        c_ops.append(np.sqrt(Gamma1) * a)
     if Gamma_phi > 0:
-        c_ops.append(np.sqrt(Gamma_phi) * qt.sigmaz() / 2.0)   # dephasing
+        c_ops.append(np.sqrt(2.0 * Gamma_phi) * n / 2.0)
 
     return c_ops
 
@@ -96,7 +151,11 @@ def compute_fidelity(rho: qt.Qobj, target_ket: qt.Qobj) -> float:
     """
     State fidelity F = <psi_target| rho |psi_target>.
 
-    Works for both pure-state kets and density matrices.
+    Works for both pure-state kets and density matrices, and for any
+    Hilbert space dimension (rho and target_ket must match). For a target
+    that is |1> in a 3-level space, population that has leaked to |2> (or
+    stayed in |0>) is automatically counted as infidelity here, with no
+    separate leakage term needed.
 
     Parameters
     ----------
@@ -117,62 +176,83 @@ def compute_fidelity(rho: qt.Qobj, target_ket: qt.Qobj) -> float:
 # ── Plotting ──────────────────────────────────────────────────────────────────
 
 def plot_pulse_and_bloch(
-    amplitudes: np.ndarray,
-    trajectory: np.ndarray,
+    amplitudes_x: np.ndarray,
+    amplitudes_y: np.ndarray,
+    populations: np.ndarray,
+    bloch01: np.ndarray,
     dt: float = 1.0,
     fidelity: float = None,
     save_path: str = None,
 ):
     """
-    Two-panel figure:
-      Left  : optimized pulse shape Omega(t) vs time
-      Right : Bloch sphere trajectory
+    Three-panel figure for the 3-level (leakage-capable) environment:
+      Left   : I/Q pulse shapes Omega_x(t), Omega_y(t)
+      Middle : level populations P0(t), P1(t), P2(t) -- makes leakage visible
+      Right  : Bloch-sphere trajectory of the 0-1 subspace (projected;
+               ignores leakage population, shown separately in the middle
+               panel)
 
     Parameters
     ----------
-    amplitudes : 1-D array of pulse amplitudes [2pi MHz]
-    trajectory : (n_steps+1, 3) array of Bloch coordinates
-    dt         : timestep duration [ns]
-    fidelity   : final fidelity (displayed in title if provided)
-    save_path  : if given, save the figure to this path
+    amplitudes_x, amplitudes_y : 1-D arrays of pulse amplitudes [rad/ns]
+    populations                : (n_steps+1, 3) array of [P0, P1, P2]
+    bloch01                    : (n_steps+1, 3) array of 0-1 subspace
+                                  Bloch coordinates [<sx01>, <sy01>, <sz01>]
+    dt                         : timestep duration [ns]
+    fidelity                   : final fidelity (displayed in title if given)
+    save_path                  : if given, save the figure to this path
     """
-    times = np.arange(len(amplitudes)) * dt
+    times = np.arange(len(amplitudes_x)) * dt
 
-    fig = plt.figure(figsize=(14, 6))
-    gs = gridspec.GridSpec(1, 2, figure=fig, wspace=0.35)
+    fig = plt.figure(figsize=(19, 6))
+    gs = gridspec.GridSpec(1, 3, figure=fig, wspace=0.4)
 
-    # ── Left: Pulse shape ────────────────────────────────────────────────
+    # ── Left: I/Q pulse shapes ──────────────────────────────────────────
     ax_pulse = fig.add_subplot(gs[0])
-    ax_pulse.step(times, amplitudes / (2 * np.pi), where="post",
-                  color="#2196F3", linewidth=2)
+    ax_pulse.step(times, amplitudes_x, where="post",
+                  color="#2196F3", linewidth=2, label=r"$\Omega_x$ (I)")
+    ax_pulse.step(times, amplitudes_y, where="post",
+                  color="#E53935", linewidth=2, label=r"$\Omega_y$ (Q, DRAG-like)")
     ax_pulse.axhline(0, color="gray", linewidth=0.8, linestyle="--")
     ax_pulse.set_xlabel("Time (ns)", fontsize=12)
-    ax_pulse.set_ylabel(r"Drive amplitude $\Omega(t)$ / $2\pi$ (MHz)", fontsize=12)
-    ax_pulse.set_title("Optimized Pulse Shape", fontsize=13, fontweight="bold")
+    ax_pulse.set_ylabel(r"Drive amplitude $\Omega$ (rad/ns)", fontsize=12)
+    ax_pulse.set_title("Optimized I/Q Pulse Shape", fontsize=13, fontweight="bold")
+    ax_pulse.legend(fontsize=10)
     ax_pulse.grid(True, alpha=0.3)
 
-    # ── Right: Bloch sphere ──────────────────────────────────────────────
-    ax_bloch = fig.add_subplot(gs[1], projection="3d")
+    # ── Middle: level populations (leakage) ─────────────────────────────
+    ax_pop = fig.add_subplot(gs[1])
+    pop_times = np.arange(len(populations)) * dt
+    ax_pop.plot(pop_times, populations[:, 0], color="#43A047", linewidth=2, label=r"$P_0$")
+    ax_pop.plot(pop_times, populations[:, 1], color="#1E88E5", linewidth=2, label=r"$P_1$")
+    ax_pop.plot(pop_times, populations[:, 2], color="#FB8C00", linewidth=2, label=r"$P_2$ (leakage)")
+    ax_pop.set_xlabel("Time (ns)", fontsize=12)
+    ax_pop.set_ylabel("Population", fontsize=12)
+    ax_pop.set_ylim([-0.05, 1.05])
+    ax_pop.set_title("Level Populations", fontsize=13, fontweight="bold")
+    ax_pop.legend(fontsize=10)
+    ax_pop.grid(True, alpha=0.3)
+
+    # ── Right: Bloch sphere (0-1 subspace, leakage ignored here) ────────
+    ax_bloch = fig.add_subplot(gs[2], projection="3d")
     _draw_bloch_sphere(ax_bloch)
 
-    xs, ys, zs = trajectory[:, 0], trajectory[:, 1], trajectory[:, 2]
-    # Colour-code trajectory by time (blue → red)
+    xs, ys, zs = bloch01[:, 0], bloch01[:, 1], bloch01[:, 2]
     n = len(xs) - 1
     for i in range(n):
         color = plt.cm.plasma(i / max(n - 1, 1))
         ax_bloch.plot(xs[i:i+2], ys[i:i+2], zs[i:i+2],
                       color=color, linewidth=2)
 
-    # Start / end markers
-    ax_bloch.scatter(*trajectory[0],  color="green",  s=80, zorder=5, label="|0⟩ start")
-    ax_bloch.scatter(*trajectory[-1], color="red",    s=80, zorder=5, label="|1⟩ end")
-    ax_bloch.scatter(0, 0, -1,        color="gold",   s=60, zorder=5,
+    ax_bloch.scatter(*bloch01[0],  color="green",  s=80, zorder=5, label="|0⟩ start")
+    ax_bloch.scatter(*bloch01[-1], color="red",    s=80, zorder=5, label="|1⟩ end")
+    ax_bloch.scatter(0, 0, -1,     color="gold",   s=60, zorder=5,
                      marker="*", label="|1⟩ target")
 
     ax_bloch.set_xlabel("X", fontsize=10)
     ax_bloch.set_ylabel("Y", fontsize=10)
     ax_bloch.set_zlabel("Z", fontsize=10)
-    title = "Bloch Sphere Trajectory"
+    title = "0-1 Subspace Bloch Trajectory"
     if fidelity is not None:
         title += f"\nFinal Fidelity = {fidelity:.4f}"
     ax_bloch.set_title(title, fontsize=12, fontweight="bold")
@@ -181,7 +261,7 @@ def plot_pulse_and_bloch(
     plt.tight_layout()
     if save_path:
         fig.savefig(save_path, dpi=150, bbox_inches="tight")
-        print(f"[utils] Figure saved → {save_path}")
+        print(f"[utils] Figure saved -> {save_path}")
     plt.show()
     return fig
 
@@ -230,6 +310,6 @@ def plot_training_rewards(rewards: list, window: int = 50, save_path: str = None
     plt.tight_layout()
     if save_path:
         fig.savefig(save_path, dpi=150, bbox_inches="tight")
-        print(f"[utils] Training curve saved → {save_path}")
+        print(f"[utils] Training curve saved -> {save_path}")
     plt.show()
     return fig

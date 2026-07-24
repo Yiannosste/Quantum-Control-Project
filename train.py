@@ -17,10 +17,17 @@ Outputs
 """
 
 import os
+import sys
 import argparse
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")  # headless rendering for training
+
+# Windows consoles default to a legacy codepage (e.g. cp1252) that can't
+# encode the unicode symbols (π, →, …) used in this script's log output.
+if sys.stdout.encoding is not None and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
@@ -59,14 +66,22 @@ def parse_args():
     p = argparse.ArgumentParser(description="Train PPO for quantum pulse optimization")
     p.add_argument("--timesteps",    type=int,   default=200_000,
                    help="Total training timesteps (default: 200 000)")
-    p.add_argument("--n-steps",      type=int,   default=50,
-                   help="Episode length / time steps per episode (default: 50)")
+    p.add_argument("--n-steps",      type=int,   default=10,
+                   help="Episode length / time steps per episode (default: 10)")
     p.add_argument("--dt",           type=float, default=1.0,
                    help="Timestep duration in ns (default: 1.0)")
-    p.add_argument("--omega-max",    type=float, default=0.1,
-                   help="Max drive amplitude 2pi*MHz (default: 0.1)")
+    p.add_argument("--omega-max",    type=float, default=0.35,
+                   help="Max drive amplitude 2pi*MHz (default: 0.35)")
     p.add_argument("--energy-pen",   type=float, default=0.01,
                    help="Pulse-energy penalty coefficient (default: 0.01)")
+    p.add_argument("--leakage-pen",  type=float, default=1.0,
+                   help="Per-step |2>-population penalty coefficient (default: 1.0)")
+    p.add_argument("--bandwidth-tau", type=float, default=0.5,
+                   help="AWG bandwidth RC time constant in ns; 0 disables (default: 0.5)")
+    p.add_argument("--detuning-std", type=float, default=0.03,
+                   help="Stddev of per-episode random detuning [rad/ns] (default: 0.03)")
+    p.add_argument("--amp-error-std", type=float, default=0.05,
+                   help="Stddev of per-episode random amplitude gain error (default: 0.05)")
     p.add_argument("--lr",           type=float, default=3e-4,
                    help="PPO learning rate (default: 3e-4)")
     p.add_argument("--batch-size",   type=int,   default=64,
@@ -97,8 +112,12 @@ def main():
     print(f"  Timesteps    : {args.timesteps:,}")
     print(f"  Episode len  : {args.n_steps} steps × {args.dt} ns = "
           f"{args.n_steps * args.dt:.0f} ns gate time")
-    print(f"  Omega max    : {args.omega_max:.3f} × 2π MHz")
+    print(f"  Omega max    : {args.omega_max:.3f} rad/ns per quadrature (I/Q)")
     print(f"  T1 / T2      : {QUBIT_PARAMS['T1']:.0f} ns / {QUBIT_PARAMS['T2']:.0f} ns")
+    print(f"  Anharmonicity: {QUBIT_PARAMS['alpha']:.3f} rad/ns ({QUBIT_PARAMS['num_levels']} levels)")
+    print(f"  AWG bandwidth tau : {args.bandwidth_tau:.2f} ns")
+    print(f"  Detuning std      : {args.detuning_std:.3f} rad/ns (per-episode, hidden)")
+    print(f"  Amp error std     : {args.amp_error_std:.3f} (per-episode, hidden)")
     print("=" * 60)
 
     # ── Environment factory ───────────────────────────────────────────────
@@ -107,6 +126,10 @@ def main():
         dt=args.dt,
         omega_max=args.omega_max,
         energy_penalty=args.energy_pen,
+        leakage_penalty=args.leakage_pen,
+        bandwidth_tau=args.bandwidth_tau,
+        detuning_std=args.detuning_std,
+        amp_error_std=args.amp_error_std,
         params=QUBIT_PARAMS,
     )
 
@@ -122,11 +145,16 @@ def main():
     eval_env = Monitor(QuantumPulseEnv(**env_kwargs))
 
     # ── PPO agent ─────────────────────────────────────────────────────────
+    # Rollout buffer length: a few full episodes' worth, but never smaller
+    # than a few mini-batches (SB3 requires batch_size <= n_steps * n_envs;
+    # short episodes like the default 10-step gate would otherwise collide
+    # with the default batch_size=64).
+    rollout_steps = max(args.n_steps * 4, args.batch_size * 4)
     model = PPO(
         policy="MlpPolicy",
         env=train_env,
         learning_rate=args.lr,
-        n_steps=args.n_steps * 4,          # rollout buffer length
+        n_steps=rollout_steps,             # rollout buffer length
         batch_size=args.batch_size,
         n_epochs=args.n_epochs,
         gamma=0.99,

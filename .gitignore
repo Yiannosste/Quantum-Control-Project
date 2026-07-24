@@ -15,7 +15,9 @@ build/
 
 # Project outputs (generated at runtime)
 models/
+models_seedstudy/
 logs/
+logs_seed*/
 results/
 
 # IDE
