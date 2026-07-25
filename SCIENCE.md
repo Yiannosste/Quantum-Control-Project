@@ -10,6 +10,21 @@ isolation. Every number in Section 7 is read verbatim from
 `results/seed_study.txt` / `.json`, produced by `seed_study.py`. File
 references point to the functions that implement each piece of physics.
 
+The result Section 7 arrives at — GRAPE beats every physically deployable
+RL policy — is not the interesting part on its own; a single number either
+way would prove little. What makes it trustworthy is everything built
+around it: two genuinely fair GRAPE baselines instead of a strawman
+(Section 5), a designed experiment that isolates *why* the gap exists
+rather than just reporting that it does (Section 7.3), five independent
+seeds with paired significance tests instead of a single lucky run
+(Section 7.2), a detector validated against a known ground truth before
+its negative result was trusted (Section 7.5), and a real
+collapse-operator bug — simulating 2.29x too little dephasing — caught by
+testing the actual production code path instead of a hand-verified
+stand-in, and now guarded by a standing regression test (Section 2.1,
+`tests/test_physics.py`). That methodology is the actual subject of this
+document.
+
 ---
 
 ## 1. The Transmon as a Weakly-Anharmonic 3-Level System
@@ -151,7 +166,7 @@ Hilbert space:
 | Channel | Operator | Rate | Physical meaning |
 |---|---|---|---|
 | $T_1$ relaxation | $L_1=\sqrt{\Gamma_1}\cdot a$ | $\Gamma_1 = 1/T_1$ | Spontaneous decay $\lvert n\rangle\to\lvert n{-}1\rangle$ |
-| $T_2^{\ast}$ dephasing | $L_2=\sqrt{2\Gamma_\phi}\cdot n/2$ | $\Gamma_\phi = \frac{1}{T_2}-\frac{\Gamma_1}{2}$ | Random phase drift, no population change |
+| $T_2^{\ast}$ dephasing | $L_2=\sqrt{2\Gamma_\phi}\cdot n$ | $\Gamma_\phi = \frac{1}{T_2}-\frac{\Gamma_1}{2}$ | Random phase drift, no population change |
 
 where $a=$ `qutip.destroy(3)` and $n=a^\dagger a$. Because
 $\langle n{-}1\rvert a\lvert n\rangle=\sqrt{n}$, the single operator $L_1$
@@ -169,25 +184,46 @@ $T_2 \le 2T_1$; the code enforces $\Gamma_\phi\ge0$ via a `max(..., 0.0)`
 clamp. The default parameters $T_1=1000$ ns, $T_2=500$ ns satisfy this with
 margin ($500 \le 2000$).
 
-**Why the $L_2$ prefactor is $\sqrt{2\Gamma_\phi}$ and not $\sqrt{\Gamma_\phi}$.**
-A naively-transplanted two-level dephasing operator, $\sqrt{\Gamma_\phi}\cdot\sigma_z/2$,
-looks reasonable but is quantitatively wrong: its actual coherence-decay
-rate is only $\Gamma_\phi/2$, not $\Gamma_\phi$ — i.e. it would make the
-*simulated* T2 silently 2x longer than the number in `QUBIT_PARAMS['T2']`.
-We verified the operator used here is correct by direct simulation: starting
-from an equal superposition $(\lvert0\rangle+\lvert1\rangle)/\sqrt2$ with no
-drive, propagating under $L_2$ alone, and fitting the exponential decay of
-$|\langle\sigma_x\rangle+i\langle\sigma_y\rangle|$:
+**Deriving the $L_2$ prefactor, and why there is no extra $1/2$ on $n$.**
+For a diagonal Hermitian Lindblad operator $L$ with eigenvalues $l_k$ on
+level $k$, expanding the GKSL dissipator
+$D[L]\rho = L\rho L^\dagger - \frac{1}{2}\{L^\dagger L,\rho\}$ on the
+coherence $\rho_{jk}$ gives a decay rate of $\frac{1}{2}(l_j-l_k)^2$.
+
+For the ordinary 2-level qubit, the *naively-transplanted* operator
+$L=\sqrt{\Gamma_\phi}\cdot\sigma_z/2$ has eigenvalues $\pm\sqrt{\Gamma_\phi}/2$
+on $\lvert0\rangle,\lvert1\rangle$, giving a decay rate of $\Gamma_\phi/2$ —
+half of the target $\Gamma_\phi$. The *correct* 2-level operator,
+$L=\sqrt{2\Gamma_\phi}\cdot\sigma_z/2$, has eigenvalues $\pm\sqrt{2\Gamma_\phi}/2$,
+giving exactly $\Gamma_\phi$.
+
+Generalizing to 3 levels: $n$ has eigenvalues $0,1,2,\dots$ — levels spaced
+by exactly $1$, the *same* spacing as $\sigma_z/2$ (eigenvalues $\pm\frac{1}{2}$).
+So $n$ is already the direct multi-level analog of $\sigma_z/2$ and needs no
+extra $\frac{1}{2}$ the way $\sigma_z$ itself (spacing $2$) would — the correct
+3-level operator is $L_2=\sqrt{2\Gamma_\phi}\cdot n$, obtained by directly
+substituting $n$ for $\sigma_z/2$ in the correct 2-level form above.
+
+We verified this by direct simulation: starting from an equal superposition
+$(\lvert0\rangle+\lvert1\rangle)/\sqrt2$ with no drive, propagating under
+`utils.py: build_collapse_operators`'s actual output, and fitting the
+exponential decay of the 0-1 coherence:
 
 ```
-Nominal T2 input                    : 500.0 ns
-Measured T2 (sqrt(Gamma_phi) form)  : 800.0 ns   <- wrong by 1.6x
-Measured T2 (sqrt(2*Gamma_phi) form): 500.0 ns   <- matches to 4 significant figures
+Nominal T2 input                       : 500.0 ns
+Measured T2 (sqrt(2*Gamma_phi)*n/2 form): 1142.9 ns   <- wrong by 2.29x (too little dephasing)
+Measured T2 (sqrt(2*Gamma_phi)*n form)  : 500.0 ns    <- matches to 4 significant figures
 ```
 
-(`tutorial.ipynb`, Section 2, reproduces this exact measurement.) Every
-fidelity number in this document and the README uses the correct,
-verified operator.
+The `n/2` form was, for a time, what this codebase actually shipped: every
+fidelity number this project has ever reported was generated under 2.29x
+too little dephasing before this fix. (`tutorial.ipynb`, Section 2,
+reproduces this exact measurement against the real `build_collapse_operators()`
+function, not a hand-rolled stand-in — testing the actual function is what
+catches this class of bug; `tests/test_physics.py` guards against it
+recurring via a regression test asserting measured T1/T2 match
+`QUBIT_PARAMS` to 1%.) Every fidelity number in the current version of this
+document and the README uses the corrected, verified operator.
 
 ### 2.2 Numerical check: T1 decay
 
@@ -243,14 +279,14 @@ durations:
 
 | Gate time | Required $\Omega_x$ | Fidelity | Leakage $P_2$ |
 |---|---|---|---|
-| 50 ns | 0.0628 | 0.9757 | 0.0008 |
-| 30 ns | 0.1047 | 0.9828 | 0.0022 |
-| **20 ns** | **0.1571** | **0.9834** | **0.0049** |
-| 15 ns | 0.2094 | 0.9789 | 0.0099 |
-| 12 ns | 0.2618 | 0.9749 | 0.0129 |
-| 10 ns | 0.3142 | 0.9647 | 0.0212 |
-| 8 ns | 0.3927 | 0.9553 | 0.0264 |
-| 5 ns | 0.6283 | 0.9056 | 0.0578 |
+| 50 ns | 0.0628 | 0.9622 | 0.0008 |
+| 30 ns | 0.1047 | 0.9744 | 0.0023 |
+| **20 ns** | **0.1571** | **0.9777** | **0.0049** |
+| 15 ns | 0.2094 | 0.9746 | 0.0099 |
+| 12 ns | 0.2618 | 0.9713 | 0.0130 |
+| 10 ns | 0.3142 | 0.9617 | 0.0213 |
+| 8 ns | 0.3927 | 0.9527 | 0.0267 |
+| 5 ns | 0.6283 | 0.9038 | 0.0582 |
 
 The naive-pulse fidelity **peaks around 20 ns and gets *worse* for shorter
 gates**, the opposite of "shorter is always better." Leakage overtakes
@@ -262,18 +298,19 @@ leakage that comes with the stronger drive it requires.
 ### 3.2 Why 10 ns anyway: leakage-suppressed control beats the naive optimum
 
 The point of giving the agent a second (Q) control channel (Section 1.4) is
-that it doesn't have to accept the naive-pulse tradeoff above. A
-gradient-optimized DRAG-like pulse at 10 ns, found with only 15 L-BFGS-B
-iterations from a physics-informed initial guess (`grape_baseline.py`, see
-Section 7 for the full procedure), reaches:
+that it doesn't have to accept the naive-pulse tradeoff above. Nominal
+GRAPE — a genuinely leakage-suppressing 10 ns pulse, gradient-optimized
+against the full 3-level physics (`grape_baseline.py`, see Section 7 for
+the full procedure and results) — reaches:
 
 ```
-fidelity = 0.9897   leakage = 0.0046
+fidelity = 0.9867   leakage = 0.0049
 ```
 
-— comfortably beating *every* entry in the naive-pulse table above,
-including the 20 ns "sweet spot," despite running at the more aggressive
-10 ns gate time. This is the justification for the 10 ns default: it is
+(read verbatim from `results/seed_study.txt`, identical to the GRAPE row in
+Section 7.2) — comfortably beating *every* entry in the naive-pulse table
+above, including the 20 ns "sweet spot," despite running at the more
+aggressive 10 ns gate time. This is the justification for the 10 ns default: it is
 only a good choice *because* the agent has a real, functioning
 leakage-suppression channel to use, not because shorter is automatically
 better. Section 7 reports what the fully-trained RL policy achieves at this
@@ -480,15 +517,17 @@ Being transparent about what this model does *not* capture:
 ## 7. Results: GRAPE Beats Every Deployable RL Policy, and Why
 
 **Headline: on this benchmark, gradient-based open-loop optimal control
-(GRAPE, 0.9765 robust-mean fidelity) beats every physically deployable
-version of the RL policy (RL frozen/open-loop, 0.9718).** The closed-loop RL
-number that looks better (0.9818) depends on mid-episode access to exact,
+(GRAPE, 0.9738 robust-mean fidelity) beats every physically deployable
+version of the RL policy (RL frozen/open-loop, 0.9692).** The closed-loop RL
+number that looks better (0.9788) depends on mid-episode access to exact,
 noiseless simulator state — information no real qubit readout can provide
 inside a 10 ns gate (Section 4.1). Freezing the trained policy into a pulse
 a real controller could actually run does not merely erase its apparent
-advantage over GRAPE; it inverts it. The exception is leakage, where the
-advantage survives freezing intact (Section 7.2) — the one part of what RL
-learned that isn't an artifact of unrealizable information.
+advantage over GRAPE; it inverts it. The exception is leakage: RL (frozen)
+still leaks far less than either GRAPE variant, and by nearly the same
+margin as RL (live) — the small residual gap between live and frozen
+leakage is statistically detectable but practically negligible (Section
+7.2 has the precise numbers).
 
 ### 7.1 Procedure
 
@@ -518,11 +557,11 @@ miscalibration draws, RL = 200,000 PPO timesteps/seed):
 
 | Controller | Nominal fidelity | Robust mean fidelity | Robust mean leakage |
 |---|---|---|---|
-| Naive constant pulse | 0.9649 | 0.9534 ± 0.0213 | 0.0199 |
-| GRAPE (nominal-only) | 0.9895 | 0.9765 ± 0.0000 | 0.0050 |
-| Ensemble-GRAPE (robust) | 0.9898 | 0.9769 ± 0.0000 | 0.0046 |
-| **RL (live/closed-loop)** | 0.9830 ± 0.0025 | **0.9818 ± 0.0025** | **0.0023** |
-| RL (frozen/open-loop) | — | 0.9718 ± 0.0023 | 0.0022 |
+| Naive constant pulse | 0.9619 | 0.9505 ± 0.0211 | 0.0200 |
+| GRAPE (nominal-only) | 0.9867 | 0.9738 ± 0.0000 | 0.0049 |
+| Ensemble-GRAPE (robust) | 0.9869 | 0.9741 ± 0.0000 | 0.0046 |
+| **RL (live/closed-loop)** | 0.9803 ± 0.0022 | **0.9788 ± 0.0020** | **0.0024** |
+| RL (frozen/open-loop) | — | 0.9692 ± 0.0021 | 0.0024 |
 
 **On the zero std for both GRAPE variants:** every one of the 5
 optimization seeds converged to a bit-identical pulse. This is not a seeding
@@ -539,38 +578,45 @@ are close to the true optimum for this pulse class, not an artifact.
 hardware, and because it behaves differently from fidelity:** leakage
 escapes the computational subspace entirely, which is what actually breaks
 quantum error correction, in a way ordinary (recoverable) infidelity does
-not. RL (live) leaks 0.0023 per gate on average, versus 0.0050 for nominal
+not. RL (live) leaks 0.0024 per gate on average, versus 0.0049 for nominal
 GRAPE and 0.0046 for ensemble GRAPE — roughly 2x lower, in every one of the
-5 seeds (RL's per-seed leakage ranges 0.0016-0.0029; both GRAPE variants'
-constant values sit above that entire range). Unlike fidelity, **this
-advantage survives freezing**: RL (frozen) leaks 0.0022, statistically
-indistinguishable from RL (live)'s 0.0023 (paired t-test p=0.35, only 3 of 5
-seeds even favor live), and still roughly 2x lower than either GRAPE variant
-(paired t-test p=0.0003 for RL (frozen) vs. nominal GRAPE, consistent in all
-5 seeds). Leakage suppression, unlike the fidelity gain, does not depend on
-live state access — it is a property of the waveform itself.
+5 seeds (RL's per-seed leakage ranges 0.0022-0.0026; both GRAPE variants'
+constant values sit above that entire range). This advantage is close to
+freezing-invariant: RL (frozen) leaks 0.0024, essentially the same as RL
+(live) (mean difference +0.00002 — smaller than the table's rounding), and
+still roughly 2x lower than either GRAPE variant (paired t-test p=4.4e-06
+for RL (frozen) vs. nominal GRAPE, consistent in all 5 seeds). The
+live-vs-frozen leakage difference is small enough to be practically
+negligible, but with variance this tight across seeds it is technically
+detectable (paired t-test p=0.023) even though the sign test — which only
+asks about direction, not magnitude — is not (4 of 5 seeds favor live,
+p=0.19). Leakage suppression, unlike the fidelity gain, does not depend
+substantially on live state access — it is overwhelmingly a property of the
+waveform itself.
 
 Paired significance (per-seed robust-mean fidelity, n=5):
 
 | Comparison | Mean difference | Paired t-test | Sign test (wins) |
 |---|---|---|---|
-| RL (live) vs. GRAPE | +0.0053 | p=0.0127 | 5/5, p=0.0312 |
-| RL (live) vs. Ensemble-GRAPE | +0.0049 | p=0.0169 | 5/5, p=0.0312 |
-| RL (live) vs. RL (frozen) | +0.0100 | p=3.43e-07 | 5/5, p=0.0312 |
-| RL (frozen) vs. GRAPE | -0.0046 | p=0.0167 | 0/5, p=1.0000 |
+| RL (live) vs. GRAPE | +0.0050 | p=0.0071 | 5/5, p=0.0312 |
+| RL (live) vs. Ensemble-GRAPE | +0.0047 | p=0.0084 | 5/5, p=0.0312 |
+| RL (live) vs. RL (frozen) | +0.0096 | p=7.12e-07 | 5/5, p=0.0312 |
+| RL (frozen) vs. GRAPE | -0.0047 | p=0.0117 | 0/5, p=1.0000 |
 
 Paired significance (per-seed mean leakage, n=5):
 
 | Comparison | Mean difference | Paired t-test | Sign test (wins) |
 |---|---|---|---|
-| RL (live) vs. RL (frozen) | +0.00003 | p=0.3493 | 3/5, p=0.5000 |
-| RL (frozen) vs. GRAPE | -0.00272 | p=0.0003 | 0/5, p=1.0000 |
+| RL (live) vs. RL (frozen) | +0.00002 | p=0.0231 | 4/5, p=0.1875 |
+| RL (frozen) vs. GRAPE | -0.00249 | p=4.42e-06 | 0/5, p=1.0000 |
 
 (For the leakage rows, "wins" counts *higher* leakage per the shared
-`paired_stats()` convention — read it as "0/5" meaning RL (frozen) never
-leaked *more* than GRAPE, i.e. leaked less in all 5 seeds; the near-zero,
-non-significant RL(live)-vs-frozen difference is the finding that matters
-here.)
+`paired_stats()` convention — read "0/5" for RL(frozen) vs. GRAPE as RL
+(frozen) never leaking *more* than GRAPE, i.e. leaking less in all 5 seeds.
+For RL(live) vs. RL(frozen), the mean difference — two-hundredths of a
+percentage point of leakage — is the number that matters here; the paired
+t-test's significance reflects how tightly clustered that tiny difference
+is across seeds, not that it is large.)
 
 ### 7.3 The mechanism test: what happens when RL can't react
 
@@ -592,14 +638,14 @@ out *once* on the nominal (zero-miscalibration) qubit, freezing the exact
 waveform it produced, and replaying that fixed waveform open-loop across
 the same 150 paired draws:
 
-- RL (frozen)'s robust-mean fidelity is 0.9718 ± 0.0023, a drop of
-  +0.0100 from RL (live)'s 0.9818 ± 0.0025 — consistent
-  across all 5 seeds (per-seed drop ranges 0.0097-0.0105, paired t-test
-  p=3.43e-07).
+- RL (frozen)'s robust-mean fidelity is 0.9692 ± 0.0021, a drop of
+  +0.0096 from RL (live)'s 0.9788 ± 0.0020 — consistent
+  across all 5 seeds (per-seed drop ranges 0.0093-0.0103, paired t-test
+  p=7.12e-07).
 - That drop doesn't just erase RL's edge over GRAPE — it inverts it. RL
-  (frozen)'s 0.9718 is significantly *worse* than nominal GRAPE's 0.9765
-  (mean difference -0.0046, paired t-test p=0.0167, 0 of 5 seeds beat
-  GRAPE, sign-test p=1.0000) and worse than ensemble GRAPE's 0.9769 by
+  (frozen)'s 0.9692 is significantly *worse* than nominal GRAPE's 0.9738
+  (mean difference -0.0047, paired t-test p=0.0117, 0 of 5 seeds beat
+  GRAPE, sign-test p=1.0000) and worse than ensemble GRAPE's 0.9741 by
   essentially the same margin. Once the policy can no longer react to what
   it observes, it doesn't merely lose its advantage over the two open-loop
   optimal-control baselines — it falls below both of them.
@@ -609,7 +655,7 @@ headline. RL (live)'s advantage over both GRAPE baselines depends
 substantially on exploiting mid-episode state information no real
 gate-time-scale experiment can provide — not primarily on having found an
 inherently more robust pulse shape. Restricted to what a real controller
-could actually run open-loop, GRAPE (0.9765) beats RL (0.9718): **on this
+could actually run open-loop, GRAPE (0.9738) beats RL (0.9692): **on this
 benchmark, gradient-based optimal control wins.** This is not a null result
 about RL; it is a precise, signed statement of *what kind* of result this
 is: strong evidence that a policy with access to fast, low-latency state
@@ -617,8 +663,9 @@ estimation (which does not exist for single-shot gate-time readout today,
 but is an active hardware research direction) could meaningfully outperform
 open-loop optimal control on this task — not a demonstration that today's
 fixed-pulse calibration is already beatable by switching to RL. The one
-exception is leakage (above), where RL's advantage is a property of the
-waveform itself and survives the same freezing test intact.
+exception is leakage (above), where RL's advantage is overwhelmingly a
+property of the waveform itself and survives the same freezing test nearly
+intact.
 
 ### 7.4 Does ensemble GRAPE close the gap to RL (live)?
 
@@ -626,18 +673,18 @@ This question is secondary to the headline result (nominal GRAPE already
 beats the only deployable RL variant) but still matters for characterizing
 *why* RL (live) — not deployable, but informative about what live access
 buys — retains an edge over both open-loop baselines. Only marginally.
-Ensemble GRAPE's robust-mean fidelity (0.9769) is barely
-above nominal GRAPE's (0.9765) — a difference of +0.0004, an order of
-magnitude smaller than RL (live)'s edge over either baseline (+0.0049 to
-+0.0053). RL (live) still beats ensemble GRAPE by 0.0049 (paired t-test
-p=0.0169, 5/5 seeds, sign-test p=0.0312) — a gap barely narrower than
-against nominal GRAPE's +0.0053. Training on the correct miscalibration
+Ensemble GRAPE's robust-mean fidelity (0.9741) is barely
+above nominal GRAPE's (0.9738) — a difference of +0.0002, an order of
+magnitude smaller than RL (live)'s edge over either baseline (+0.0047 to
++0.0050). RL (live) still beats ensemble GRAPE by 0.0047 (paired t-test
+p=0.0084, 5/5 seeds, sign-test p=0.0312) — a gap barely narrower than
+against nominal GRAPE's +0.0050. Training on the correct miscalibration
 distribution, in other words, recovers almost none of RL's advantage;
 consistent with Section 7.3's frozen-policy result, nearly all of that
 advantage depends on live mid-episode state access, not on knowing the
 right distribution to optimize an open-loop pulse against. Ensemble GRAPE
-does modestly reduce leakage relative to nominal GRAPE (0.0046 vs. 0.0050),
-but both remain roughly 2x RL (live)'s leakage (0.0023).
+does modestly reduce leakage relative to nominal GRAPE (0.0046 vs. 0.0049),
+but both remain roughly 2x RL (live)'s leakage (0.0024).
 
 ### 7.5 Does the learned policy rediscover DRAG?
 
@@ -666,36 +713,64 @@ the identical waveform Section 7.3 evaluates):
 
 | Seed | Correlation | $R^2$ |
 |---|---|---|
-| 0 | -0.16 | -11.17 |
-| 1 | +0.03 | -7.01 |
-| 2 | -0.14 | -8.78 |
-| 3 | +0.64 | -1.63 |
-| 4 | +0.19 | -8.57 |
-| **Mean ± std** | **+0.11 ± 0.29** | **-7.43 ± 3.19** |
+| 0 | +0.02 | -9.47 |
+| 1 | +0.83 | -0.89 |
+| 2 | -0.32 | -12.18 |
+| 3 | +0.86 | **+0.73** |
+| 4 | +0.58 | -10.77 |
+| **Mean ± std** | **+0.40 ± 0.47** | **-6.51 ± 5.35** |
 
-**It does not match, consistently.** Correlation is weak and inconsistent in
-*sign* across seeds (range -0.16 to +0.64, mean statistically indistinguishable
-from zero given that spread) — but $R^2$ is strongly negative in *every one*
-of the 5 seeds: the simple derivative-DRAG prediction is a far worse
-predictor of $\Omega_y(t)$ than just using its mean, independently, in all 5
-trained policies, not just one.
+**Mostly does not match — with one real exception.** In 4 of 5 seeds, $R^2$
+is strongly negative: the simple derivative-DRAG prediction is a far worse
+predictor of $\Omega_y(t)$ than just using its mean. Seed 3 breaks that
+pattern: correlation +0.86 *and* $R^2=+0.73$ — a genuinely good fit, not
+just a shape resemblance. (Correlation alone is a weaker signal here:
+seeds 1 and 4 also show moderately-high correlation, +0.83 and +0.58, but
+still strongly negative $R^2$ — correlation is invariant to a constant
+offset, $R^2$'s no-intercept scale fit is not, so a curve that tracks
+DRAG's *shape* but sits at the wrong DC level correlates well while still
+fitting poorly. Seed 3 is the only one where both agree.) Read plainly:
+across 5 independently-trained policies, one converged on something close
+to the textbook DRAG relation and four did not — this is not the strong,
+uniform null result a single-seed check would have reported, and multi-seed
+evaluation is what surfaces that nuance instead of hiding it in a single
+data point.
 
-What the policies do instead, viewed as a complex drive
+What the other four policies do instead, viewed as a complex drive
 $\varepsilon(t)=\Omega_x(t)+i\Omega_y(t)$: the **magnitude** $|\varepsilon(t)|$
-decays from $\approx0.37$-$0.47$ rad/ns at the start of the pulse to
-$\approx0.15$-$0.17$ rad/ns at the end — consistently, in all 5 seeds. The
-**phase** is roughly constant *within* a given seed's own pulse (drifting by
-only a few tens of degrees across the 10 steps) but the specific value
-differs sharply *across* seeds — observed values span nearly the full circle
-(seed 0: $\approx-80°$, seed 1: $\approx-30°$, seed 2: $\approx+105°$, seed 3:
-$\approx-160°$, seed 4: $\approx+110°$). Consistent magnitude decay,
-inconsistent absolute phase, is exactly what a policy with no reward term
-favoring any particular I/Q reference axis (and none favoring the DRAG
-relation specifically) would be expected to produce: it found *some* working
-leakage-suppression strategy (Section 3.2), genuinely different from
-textbook DRAG rather than a noisy version of it, and the specific phase it
-settles on looks like an arbitrary, seed-dependent choice rather than a
-rediscovered physical relationship.
+decays from $\approx0.39$-$0.49$ rad/ns at the start of the pulse to
+$\approx0.15$-$0.17$ rad/ns at the end — consistently, in all 5 seeds,
+including seed 3. The **phase** is roughly constant *within* a given seed's
+own pulse (drifting by only a few tens of degrees across the 10 steps) but
+the specific value differs sharply *across* seeds — observed values span
+nearly the full circle (seed 0: $\approx-70°$, seed 1: $\approx+8°$, seed 2:
+$\approx+100°$, seed 3: $\approx-158°$, seed 4: $\approx+112°$). Consistent
+magnitude decay, inconsistent absolute phase, is what a policy with no
+reward term favoring any particular I/Q reference axis (and none favoring
+the DRAG relation specifically) would be expected to produce most of the
+time: some working leakage-suppression strategy (Section 3.2), usually
+genuinely different from textbook DRAG rather than a noisy version of it —
+except that, in at least one of five independent training runs, gradient
+descent on the same reward found something close to the closed-form
+correction anyway.
+
+### 7.6 What this study demonstrates, independent of the scoreboard
+
+Five things had to go right for the headline result to be trustworthy
+rather than merely measured: genuinely fair baselines instead of a
+strawman comparison (Section 5); a designed test that isolates *mechanism*
+rather than just reporting an outcome (Section 7.3); statistics that can
+tell a real effect apart from seed noise (Section 7.2); a validated null
+result instead of an asserted one (Section 7.5); and a real physics bug —
+2.29x too little dephasing, silently affecting every fidelity number this
+project had ever produced — caught by testing the actual production code
+path rather than a hand-verified stand-in, root-caused to a one-character
+fix, and now guarded by a standing regression test (Section 2.1,
+`tests/test_physics.py`) so it cannot recur unnoticed. Any one of these
+missing would have made the headline result unreliable regardless of which
+controller it favored. Producing a result that survives all five is the
+actual subject of this document, and it is a harder, more transferable
+skill than getting RL to win.
 
 ---
 

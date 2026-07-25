@@ -38,9 +38,9 @@ Open-system Lindblad terms:
         this gives Gamma(1->0) = 1/T1 and Gamma(2->1) = 2/T1 automatically
         — the standard "harmonic-oscillator" scaling assumed for a weakly
         anharmonic transmon absent a separately-measured T1 for |2>.
-    T2* (pure dephasing)    : c2 = sqrt(2/T_phi) * n / 2  ==  sqrt(1/(2*T_phi)) * n
-        where  1/T2 = 1/(2*T1) + 1/T_phi
-        (see the note on the prefactor below for why this specific form).
+    T2* (pure dephasing)    : c2 = sqrt(2*Gamma_phi) * n
+        where  1/T2 = 1/(2*T1) + Gamma_phi
+        (see the note on the prefactor below for the derivation).
 
 All frequencies in units of rad/ns (equivalently 2*pi*GHz); times in ns.
 This is dimensionally literal, not a "natural units" rescaling: e.g.
@@ -49,14 +49,26 @@ real transmon single-qubit drive strengths.
 
 Note on the T2 collapse-operator prefactor
 -------------------------------------------
-The dephasing prefactor here is sqrt(2*Gamma_phi), not the naively-transplanted
-two-level form sqrt(Gamma_phi) * sigma_z / 2 (whose coherence-decay rate is
-only Gamma_phi/2, not Gamma_phi -- it would make the simulated T2 come out
-2x longer than the T1/T2 values in QUBIT_PARAMS claim). Verified by measuring
-the coherence decay of an equal superposition state directly under each
-candidate operator: this prefactor reproduces the labeled T2 to 4 significant
-figures. See SCIENCE.md, Section 2, for the full derivation and the
-verification numbers.
+For a diagonal Hermitian Lindblad operator L with eigenvalues l_k on level
+k, the coherence rho_jk decays at rate (1/2)*(l_j - l_k)^2 (from the GKSL
+dissipator D[L]rho = L rho L^dag - (1/2){L^dag L, rho}). The number operator
+n has eigenvalues 0, 1, 2, ... -- consecutive levels spaced by exactly 1,
+the same spacing as the qubit operator sigma_z/2 (eigenvalues +-1/2). That
+means n is already the direct multi-level analog of sigma_z/2; it does not
+need an extra 1/2 the way sigma_z itself (spacing 2) would. With
+L = sqrt(2*Gamma_phi)*n, the 0-1 coherence decay rate works out to exactly
+Gamma_phi, as required by 1/T2 = 1/(2*T1) + Gamma_phi.
+
+A tempting but wrong alternative is sqrt(2*Gamma_phi)*n/2 -- carrying the
+sigma_z/2-style "/2" over to n despite n not needing one -- which gives a
+decay rate of only Gamma_phi/4, not Gamma_phi. Verified numerically (equal
+superposition, no drive, coherence-decay fit): that form simulates T2 as
+1142.9 ns against a QUBIT_PARAMS["T2"] label of 500 ns (2.29x too slow,
+i.e. 2.29x too little dephasing). The form used here (no extra /2)
+reproduces the labeled T2 to 4 significant figures. See SCIENCE.md, Section
+2, for the full derivation and verification numbers, and
+tests/test_physics.py for a standing regression test against exactly this
+failure mode.
 """
 
 import numpy as np
@@ -112,9 +124,10 @@ def build_collapse_operators(params: dict = None, num_levels: int = None) -> lis
 
     c1 = sqrt(Gamma1) * a        (amplitude damping, n-scaled: 2->1 decays
                                    twice as fast as 1->0, per <n|a|n-1>=sqrt(n))
-    c2 = sqrt(2*Gamma_phi) * n/2 (pure dephasing; see module docstring for
-                                   why the prefactor is sqrt(2*Gamma_phi) and
-                                   not sqrt(Gamma_phi))
+    c2 = sqrt(2*Gamma_phi) * n   (pure dephasing; see module docstring for
+                                   the derivation -- n already has the same
+                                   consecutive-level spacing as sigma_z/2, so
+                                   no extra 1/2 belongs here)
 
     where:
         Gamma1    = 1 / T1
@@ -140,7 +153,7 @@ def build_collapse_operators(params: dict = None, num_levels: int = None) -> lis
     if Gamma1 > 0:
         c_ops.append(np.sqrt(Gamma1) * a)
     if Gamma_phi > 0:
-        c_ops.append(np.sqrt(2.0 * Gamma_phi) * n / 2.0)
+        c_ops.append(np.sqrt(2.0 * Gamma_phi) * n)
 
     return c_ops
 

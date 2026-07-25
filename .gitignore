@@ -20,6 +20,9 @@ logs/
 logs_seed*/
 results/
 
+# Test artifacts
+.pytest_cache/
+
 # IDE
 .vscode/
 .idea/
