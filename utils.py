@@ -4,7 +4,7 @@ utils.py
 Physics helpers: Hamiltonians, collapse operators, fidelity, and plotting.
 
 Physical model (weakly-anharmonic transmon, truncated to `num_levels`
-levels — 3 by default: |0>, |1>, |2>)
+levels, 3 by default: |0>, |1>, |2>)
 --------------------------------------------------------------------
 Drift Hamiltonian, in the frame rotating at the drive frequency:
     H0 = -Delta * n  +  (alpha/2) * n * (n - 1)
@@ -25,7 +25,7 @@ Driving only Hx (Omega_y=0) is what a naive two-level pulse does; because
 `a` couples every adjacent pair of levels, this also drives 1<->2 (leakage).
 The Q quadrature is exactly the extra control real hardware uses for DRAG
 (Derivative Removal by Adiabatic Gate, Motzoi et al. 2009) to cancel that
-leakage to leading order — this project's RL agent is given that same
+leakage to leading order. This project's RL agent is given that same
 control and has to learn to use it, rather than being handed the DRAG
 formula directly.
 
@@ -36,8 +36,8 @@ Open-system Lindblad terms:
     T1  (energy relaxation) : c1 = sqrt(1/T1) * a
         Because <n|a|n> has matrix element sqrt(n) between adjacent levels,
         this gives Gamma(1->0) = 1/T1 and Gamma(2->1) = 2/T1 automatically
-        — the standard "harmonic-oscillator" scaling assumed for a weakly
-        anharmonic transmon absent a separately-measured T1 for |2>.
+        (the standard "harmonic-oscillator" scaling assumed for a weakly
+        anharmonic transmon absent a separately-measured T1 for |2>).
     T2* (pure dephasing)    : c2 = sqrt(2*Gamma_phi) * n
         where  1/T2 = 1/(2*T1) + Gamma_phi
         (see the note on the prefactor below for the derivation).
@@ -52,15 +52,15 @@ Note on the T2 collapse-operator prefactor
 For a diagonal Hermitian Lindblad operator L with eigenvalues l_k on level
 k, the coherence rho_jk decays at rate (1/2)*(l_j - l_k)^2 (from the GKSL
 dissipator D[L]rho = L rho L^dag - (1/2){L^dag L, rho}). The number operator
-n has eigenvalues 0, 1, 2, ... -- consecutive levels spaced by exactly 1,
+n has eigenvalues 0, 1, 2, ..., so consecutive levels are spaced by exactly 1,
 the same spacing as the qubit operator sigma_z/2 (eigenvalues +-1/2). That
 means n is already the direct multi-level analog of sigma_z/2; it does not
 need an extra 1/2 the way sigma_z itself (spacing 2) would. With
 L = sqrt(2*Gamma_phi)*n, the 0-1 coherence decay rate works out to exactly
 Gamma_phi, as required by 1/T2 = 1/(2*T1) + Gamma_phi.
 
-A tempting but wrong alternative is sqrt(2*Gamma_phi)*n/2 -- carrying the
-sigma_z/2-style "/2" over to n despite n not needing one -- which gives a
+A tempting but wrong alternative is sqrt(2*Gamma_phi)*n/2 (carrying the
+sigma_z/2-style "/2" over to n despite n not needing one), which gives a
 decay rate of only Gamma_phi/4, not Gamma_phi. Verified numerically (equal
 superposition, no drive, coherence-decay fit): that form simulates T2 as
 1142.9 ns against a QUBIT_PARAMS["T2"] label of 500 ns (2.29x too slow,
@@ -125,7 +125,7 @@ def build_collapse_operators(params: dict = None, num_levels: int = None) -> lis
     c1 = sqrt(Gamma1) * a        (amplitude damping, n-scaled: 2->1 decays
                                    twice as fast as 1->0, per <n|a|n-1>=sqrt(n))
     c2 = sqrt(2*Gamma_phi) * n   (pure dephasing; see module docstring for
-                                   the derivation -- n already has the same
+                                   the derivation: n already has the same
                                    consecutive-level spacing as sigma_z/2, so
                                    no extra 1/2 belongs here)
 
@@ -200,7 +200,7 @@ def plot_pulse_and_bloch(
     """
     Three-panel figure for the 3-level (leakage-capable) environment:
       Left   : I/Q pulse shapes Omega_x(t), Omega_y(t)
-      Middle : level populations P0(t), P1(t), P2(t) -- makes leakage visible
+      Middle : level populations P0(t), P1(t), P2(t), makes leakage visible
       Right  : Bloch-sphere trajectory of the 0-1 subspace (projected;
                ignores leakage population, shown separately in the middle
                panel)

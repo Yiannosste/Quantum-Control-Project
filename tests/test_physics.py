@@ -4,14 +4,14 @@ tests/test_physics.py
 Regression tests against a real, previously-shipped bug: the T2 collapse
 operator carried a spurious /2 (sqrt(2*Gamma_phi)*n/2 instead of
 sqrt(2*Gamma_phi)*n), which simulated T2 as 2.29x longer than the value in
-QUBIT_PARAMS (1142.9 ns measured vs. a labeled 500 ns) -- i.e. every result
+QUBIT_PARAMS (1142.9 ns measured vs. a labeled 500 ns). So every result
 in this repository was generated under ~2.3x too little dephasing. See
 utils.py's module docstring ("Note on the T2 collapse-operator prefactor")
 for the derivation.
 
 These tests measure T1 and T2 directly from build_collapse_operators()'s
 actual output via free-decay simulation, and assert they match
-QUBIT_PARAMS to a tight tolerance -- so a regression like this fails CI
+QUBIT_PARAMS to a tight tolerance, so a regression like this fails CI
 instead of silently shipping in every downstream fidelity number.
 """
 
@@ -67,6 +67,6 @@ def test_t2_not_the_known_bad_prefactor():
     wrong_factor = measured / QUBIT_PARAMS["T2"]
     assert wrong_factor < 1.5, (
         f"Measured T2 ({measured:.1f} ns) is {wrong_factor:.2f}x the labeled "
-        f"T2 ({QUBIT_PARAMS['T2']} ns) -- this is the signature of the spurious "
+        f"T2 ({QUBIT_PARAMS['T2']} ns). This is the signature of the spurious "
         f"/2 in the T2 collapse operator (see utils.py's module docstring)."
     )

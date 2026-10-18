@@ -107,7 +107,7 @@ def main():
         os.makedirs(d, exist_ok=True)
 
     print("=" * 60)
-    print("  RL-Driven Quantum Pulse Optimization — Training")
+    print("  RL-Driven Quantum Pulse Optimization: Training")
     print("=" * 60)
     print(f"  Timesteps    : {args.timesteps:,}")
     print(f"  Episode len  : {args.n_steps} steps × {args.dt} ns = "

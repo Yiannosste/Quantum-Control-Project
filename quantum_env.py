@@ -11,7 +11,7 @@ distinguish this from a toy two-level model:
 
 1. Leakage. Driving the 0-1 transition also weakly drives 1-2 (Section 1.2,
    SCIENCE.md); the Q quadrature is the same real degree of freedom DRAG
-   pulses use to suppress it (Motzoi et al. 2009) -- the agent has to find
+   pulses use to suppress it (Motzoi et al. 2009). The agent has to find
    that suppression itself, it is not handed the DRAG formula.
 2. Bandwidth-limited control. The Hamiltonian never sees the agent's raw
    command; it sees that command passed through a first-order RC filter
@@ -19,10 +19,10 @@ distinguish this from a toy two-level model:
    piecewise-constant jumps are not physically realizable.
 3. Per-episode miscalibration. At reset(), a random qubit-drive detuning and
    a random multiplicative amplitude-calibration error are sampled and held
-   fixed for that episode -- and are NOT part of the observation. A policy
+   fixed for that episode, and are NOT part of the observation. A policy
    can only compensate for them by inferring their effect from the observed
    state trajectory so far. Note that the observation IS the exact, noiseless
-   simulator density matrix (see _get_obs below) -- real qubit readout is
+   simulator density matrix (see _get_obs below). Real qubit readout is
    destructive and far slower than this 10 ns gate, so this is a simulation-
    training convenience, not a physically realizable feedback scheme. See
    grape_baseline.py's distill_policy() for the direct test of how much of
@@ -75,7 +75,7 @@ class QuantumPulseEnv(gym.Env):
     Two error sources pull in opposite directions: decoherence (worse for
     slower gates) and leakage to |2> (worse for faster gates, since a
     stronger drive is needed). A naive, leakage-blind pulse's fidelity
-    actually peaks around a 20 ns gate and gets *worse* below that -- see
+    actually peaks around a 20 ns gate and gets *worse* below that. See
     SCIENCE.md, Section 3, for the measured curve. The 10 ns default used
     here is only a good choice because omega_y gives the policy a real
     leakage-suppression channel to use; without it, a slower gate would be
@@ -144,7 +144,7 @@ class QuantumPulseEnv(gym.Env):
         if seed is not None:
             self._np_random_local = np.random.default_rng(seed)
 
-        # Sample this episode's hidden miscalibration -- unless the caller
+        # Sample this episode's hidden miscalibration, unless the caller
         # supplies explicit values via options={'detuning':.., 'amp_gain':..},
         # which forces a specific (detuning, amp_gain) pair instead of
         # sampling one. Used for paired/ensemble evaluation, where every
@@ -240,7 +240,7 @@ class QuantumPulseEnv(gym.Env):
     def _get_obs(self) -> np.ndarray:
         """Generalized Bloch vector: populations P1, P2 (P0 = 1-P1-P2 is
         implicit) plus the real/imaginary parts of the 01, 12, 02
-        coherences -- the minimal sufficient statistic for a 3-level
+        coherences: the minimal sufficient statistic for a 3-level
         density matrix (8 real numbers for 8 = 3^2-1 degrees of freedom)."""
         rho = self._state_dm.full()
         p1 = rho[1, 1].real
@@ -267,7 +267,7 @@ class QuantumPulseEnv(gym.Env):
     def get_full_trajectory(self, pulse_x, pulse_y, detuning: float = 0.0, amp_gain: float = 1.0):
         """
         Re-simulate an episode with given (already-bandwidth-filtered) I/Q
-        amplitudes -- e.g. straight from info["pulse_x"]/info["pulse_y"] --
+        amplitudes (e.g. straight from info["pulse_x"]/info["pulse_y"])
         and return (populations, bloch01), each an (n_steps+1, 3) array, for
         plotting. `detuning`/`amp_gain` let you replay under a specific
         (possibly non-nominal) episode condition.

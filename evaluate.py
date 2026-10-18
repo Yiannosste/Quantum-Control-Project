@@ -79,7 +79,7 @@ def main():
         fallback = "models/ppo_quantum_pulse.zip"
         if os.path.exists(fallback):
             model_path = fallback
-            print(f"[eval] best_model.zip not found — using {fallback}")
+            print(f"[eval] best_model.zip not found, using {fallback}")
         else:
             raise FileNotFoundError(
                 f"No model found at '{args.model}' or '{fallback}'.\n"
@@ -87,7 +87,7 @@ def main():
             )
 
     print("=" * 60)
-    print("  RL-Driven Quantum Pulse Optimization — Evaluation")
+    print("  RL-Driven Quantum Pulse Optimization: Evaluation")
     print("=" * 60)
     print(f"  Model        : {model_path}")
     print(f"  Episodes     : {args.n_episodes}")
@@ -140,7 +140,7 @@ def main():
     # ── Save summary ──────────────────────────────────────────────────────
     summary_path = os.path.join(args.results_dir, "eval_summary.txt")
     with open(summary_path, "w", encoding="utf-8") as f:
-        f.write("RL Quantum Pulse Optimization — Evaluation Summary\n")
+        f.write("RL Quantum Pulse Optimization: Evaluation Summary\n")
         f.write("=" * 50 + "\n")
         f.write(f"Model       : {model_path}\n")
         f.write(f"Episodes    : {args.n_episodes}\n")

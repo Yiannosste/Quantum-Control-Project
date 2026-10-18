@@ -4,13 +4,13 @@ drag_check.py
 Validates the DRAG-correlation detector against a known analytic DRAG pulse
 (a synthetic Gaussian Omega_x(t) with its exact DRAG-derived Omega_y(t)),
 then runs the same check on trained RL policies' frozen, nominal-rollout
-pulses -- so the negative result reported in SCIENCE.md, Section 7.5 (the
+pulses, so the negative result reported in SCIENCE.md, Section 7.5 (the
 policy does not rediscover DRAG) can be trusted rather than attributed to a
 broken detector.
 
 With --model-root, runs across all 5 seed_study.py models (matching the
 project's multi-seed convention elsewhere) and reports mean/std/range, not
-just a single model's number -- this check is cheap (one nominal rollout
+just a single model's number. This check is cheap (one nominal rollout
 per seed, no optimization) so there's no reason to settle for n=1.
 
 Usage
@@ -82,7 +82,7 @@ def main():
         f.write("DRAG-correlation detector: self-test + trained-policy check\n")
         f.write("=" * 62 + "\n")
         f.write("Detector self-test (synthetic Gaussian pulse + its EXACT analytic\n")
-        f.write("DRAG-derived Omega_y(t)) -- should be near-perfect if the detector works:\n")
+        f.write("DRAG-derived Omega_y(t)). Should be near-perfect if the detector works:\n")
         f.write(f"  correlation = {val_corr:.4f}\n  R^2         = {val_r2:.4f}\n  fit_scale   = {val_scale:.4f}\n\n")
         f.write("Trained policy/policies (frozen, one nominal rollout each):\n")
         corrs = np.array([c for _, _, c, _, _ in per_seed])

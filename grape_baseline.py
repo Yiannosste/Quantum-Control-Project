@@ -6,7 +6,7 @@ against the trained RL agent.
 
 Two GRAPE variants are implemented, because comparing RL (trained across a
 distribution of miscalibration) against a GRAPE pulse optimized for only the
-nominal point is not a fair fight -- a real GRAPE practitioner facing a
+nominal point is not a fair fight. A real GRAPE practitioner facing a
 miscalibrated device would optimize for robustness too:
 
   - `run_grape`          : standard GRAPE, optimized against the single
@@ -16,7 +16,7 @@ miscalibrated device would optimize for robustness too:
   - `run_ensemble_grape`  : robust/ensemble GRAPE, optimized against the
                             *average* reward over a deterministic 3x3
                             quadrature grid over (detuning, amplitude) at
-                            {-1,0,+1} standard deviations -- 9 points that
+                            {-1,0,+1} standard deviations, 9 points that
                             cover the 2-D uncertainty distribution far more
                             evenly than a handful of random draws, which is
                             what a sample-average approximation of an
@@ -36,7 +36,7 @@ here). Whether RL's measured robustness comes from a genuinely more robust
 *waveform* or from exploiting that (unrealistic) mid-episode information is
 directly testable: `distill_policy()` freezes one nominal rollout of the
 trained policy into a fixed, open-loop pulse and evaluates it exactly like
-GRAPE. See SCIENCE.md, Section 7, for the full results -- freezing the
+GRAPE. See SCIENCE.md, Section 7, for the full results: freezing the
 policy collapses its robustness below both GRAPE variants, which is the
 answer.
 
@@ -97,8 +97,8 @@ def make_env(args, detuning_std, amp_error_std):
 
 
 def rollout_fixed_pulse(env, action_seq, seed=None, options=None):
-    """Replay a FIXED (open-loop) sequence of (ax, ay) actions -- ignoring
-    whatever the environment observes -- and return (fidelity, leakage,
+    """Replay a FIXED (open-loop) sequence of (ax, ay) actions (ignoring
+    whatever the environment observes) and return (fidelity, leakage,
     total_reward). `options` can force a specific (detuning, amp_gain) via
     {'detuning':.., 'amp_gain':..} instead of letting the env sample one."""
     obs, _ = env.reset(seed=seed, options=options)
@@ -114,7 +114,7 @@ def rollout_fixed_pulse(env, action_seq, seed=None, options=None):
 
 def naive_pulse(args):
     """The analytic, leakage-blind, exactly-resonant constant I-only
-    pi-pulse -- the baseline a two-level-only analysis would recommend.
+    pi-pulse, the baseline a two-level-only analysis would recommend.
     Returns a (n_steps, 2) action array (normalized to [-1,1])."""
     amp = np.pi / (args.n_steps * args.dt)
     a_norm = np.clip(amp / args.omega_max, -1.0, 1.0)
@@ -124,7 +124,7 @@ def naive_pulse(args):
 def sample_draws(n, detuning_std, amp_error_std, seed):
     """A fixed, reusable set of (detuning, amp_gain) pairs, so every
     controller (naive / GRAPE / ensemble-GRAPE / RL) can be evaluated on
-    the *identical* paired draws -- removing evaluation-noise confounds
+    the *identical* paired draws. This removes evaluation-noise confounds
     from the comparison between controllers."""
     rng = np.random.default_rng(seed)
     detunings = rng.normal(0.0, detuning_std, size=n) if detuning_std > 0 else np.zeros(n)
@@ -134,7 +134,7 @@ def sample_draws(n, detuning_std, amp_error_std, seed):
 
 def quadrature_draws(detuning_std, amp_error_std):
     """Deterministic 3x3 grid over (detuning, amp_gain) at {-1,0,+1} standard
-    deviations each -- 9 points that cover a 2-D Gaussian's mass far more
+    deviations each: 9 points that cover a 2-D Gaussian's mass far more
     evenly than a handful of random draws, at fixed, reproducible cost. The
     standard way robust/ensemble optimal control approximates an expectation
     over a *small*-dimensional uncertainty distribution (a sample-average
@@ -148,7 +148,7 @@ def quadrature_draws(detuning_std, amp_error_std):
 def distill_policy(model, args, seed=12345):
     """Roll the trained RL policy out ONCE on the nominal (zero-miscalibration)
     qubit and freeze the exact sequence of raw actions it chose into a fixed,
-    open-loop (n_steps,2) action array -- suitable for evaluate_on_draws()
+    open-loop (n_steps,2) action array, suitable for evaluate_on_draws()
     exactly like a GRAPE pulse.
 
     This is the mechanism test: if RL's measured robustness advantage (Section
@@ -206,7 +206,7 @@ def validate_drag_detector(alpha, n_steps=10, dt=1.0, omega_max=0.35):
     Omega_y(t) = -dOmega_x/dt / alpha, then runs that pair through
     drag_correlation_check(). A negative or weak result on a real policy
     (SCIENCE.md, Section 7.5) is only trustworthy if this self-test comes
-    back near-perfect (corr~1, R^2~1) -- otherwise the detector, not the
+    back near-perfect (corr~1, R^2~1). Otherwise the detector, not the
     policy, would be the thing that's broken.
 
     The peak amplitude is deliberately kept well under omega_max: this is a
@@ -221,7 +221,7 @@ def validate_drag_detector(alpha, n_steps=10, dt=1.0, omega_max=0.35):
     omega_x = peak * np.exp(-0.5 * ((t - center) / sigma) ** 2)
     omega_y = -np.gradient(omega_x, dt) / alpha
     assert np.max(np.abs(omega_x)) <= omega_max and np.max(np.abs(omega_y)) <= omega_max, \
-        "synthetic DRAG self-test pulse exceeds omega_max -- would be clipped, invalidating the test"
+        "synthetic DRAG self-test pulse exceeds omega_max; it would be clipped, invalidating the test"
     actions = np.stack([omega_x / omega_max, omega_y / omega_max], axis=1)
     return drag_correlation_check(actions, dt, omega_max, alpha)
 
@@ -238,7 +238,7 @@ def evaluate_on_draws(controller, args, draws, is_rl: bool):
 
 def evaluate_on_draws_full(controller, args, draws, is_rl: bool):
     """Same as evaluate_on_draws, but returns (fidelities, leakages) from a
-    single pass over the draws -- both are read off the same deterministic
+    single pass over the draws. Both are read off the same deterministic
     rollout's final info dict, so computing them separately would just
     re-simulate identical physics twice."""
     env = make_env(args, detuning_std=args.detuning_std, amp_error_std=args.amp_error_std)
@@ -267,7 +267,7 @@ def _optimize(objective, args, extra_args, n_params, restart_seed, tag_prefix):
         [np.full(args.n_steps, pi_pulse_amp), np.zeros(args.n_steps)], axis=1
     ).flatten()]
     rng = np.random.default_rng(restart_seed)
-    # Full [-1,1] range, not a narrow band around zero -- a genuine multi-start
+    # Full [-1,1] range, not a narrow band around zero. A genuine multi-start
     # search needs restarts that can land anywhere in the feasible region, not
     # just near the origin, or they under-explore the landscape by construction.
     for _ in range(args.n_restarts - 1):
@@ -321,7 +321,7 @@ def ensemble_grape_objective(flat_params, env, n_steps, draws):
 def run_ensemble_grape(args, restart_seed=None, ensemble_seed=None, draws=None):
     """Robust/ensemble GRAPE: optimize against the AVERAGE reward over a
     fixed sample of miscalibration draws (sample-average approximation of
-    robust optimal control) -- the standard way a real GRAPE practitioner
+    robust optimal control), the standard way a real GRAPE practitioner
     would handle a known-miscalibrated device. Still an open-loop, fixed
     pulse: no mid-episode feedback.
 

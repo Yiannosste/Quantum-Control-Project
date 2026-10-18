@@ -3,16 +3,16 @@ seed_study.py
 -------------
 Multi-seed robustness + mechanism study across five controllers:
 
-  1. Naive constant pulse       -- analytic, leakage-blind floor.
-  2. GRAPE (nominal-only)       -- open-loop, optimized for the known qubit.
-  3. Ensemble GRAPE (robust)    -- open-loop, optimized for the average
+  1. Naive constant pulse:         analytic, leakage-blind floor.
+  2. GRAPE (nominal-only):         open-loop, optimized for the known qubit.
+  3. Ensemble GRAPE (robust):      open-loop, optimized for the average
                                     reward over a 3x3 quadrature grid spanning
                                     the miscalibration distribution.
-  4. RL (live/closed-loop)      -- the trained policy, observing exact
+  4. RL (live/closed-loop):        the trained policy, observing exact
                                     simulator state every step.
-  5. RL (frozen/open-loop)      -- one nominal rollout of that SAME policy,
+  5. RL (frozen/open-loop):        one nominal rollout of that SAME policy,
                                     frozen into a fixed pulse and replayed
-                                    open-loop -- the mechanism test.
+                                    open-loop. This is the mechanism test.
 
 RL is trained across 5 independent seeds (200,000 timesteps each); GRAPE and
 ensemble GRAPE are each optimized across 5 independent random-restart seeds,
@@ -20,7 +20,7 @@ with a genuine multi-start search (full [-1,1]-range random restarts).  Every
 controller, every seed, is evaluated on an IDENTICAL set of paired
 miscalibration draws, and results are reported as mean +/- std ACROSS SEEDS
 (the hierarchical statistic that actually bounds whether a gap is real or
-seed noise) -- plus paired significance tests against the two GRAPE
+seed noise), plus paired significance tests against the two GRAPE
 baselines.
 
 Usage
@@ -146,7 +146,7 @@ def nominal_fidelity_leakage(controller, grape_args, is_rl):
 def summarize(nominal_vals, fids_per_seed, leaks_per_seed=None):
     """fids_per_seed: list of per-seed arrays of per-draw fidelities.
     Returns nominal mean/std across seeds, and robust mean/std across
-    seeds (of each seed's own mean-over-draws) -- the correct hierarchical
+    seeds (of each seed's own mean-over-draws), the correct hierarchical
     statistic for 'variance across training/optimization seeds'."""
     seed_means = np.array([f.mean() for f in fids_per_seed])
     all_fids = np.concatenate(fids_per_seed)
@@ -281,7 +281,7 @@ def main():
         "rl_frozen_vs_grape": paired_stats(summary["rl_frozen"]["per_seed_robust_mean"], summary["grape"]["per_seed_robust_mean"],
                                             "RL(frozen)", "GRAPE"),
         # Fidelity's live-vs-frozen gap (rl_live_vs_frozen above) is large and
-        # significant -- but leakage is a genuinely separate question: does
+        # significant. But leakage is a genuinely separate question: does
         # THAT advantage also depend on live state access, or does it survive
         # freezing? Checked the same way, on leakage instead of fidelity.
         "rl_live_vs_frozen_leakage": paired_stats(summary["rl"]["per_seed_leakage_mean"], summary["rl_frozen"]["per_seed_leakage_mean"],
