@@ -22,12 +22,12 @@ $\Delta$ is the drive detuning (0 nominal). $\alpha=-1.5708$ rad/ns ($-2\pi\time
 
 ## 2. Decoherence: the Lindblad Equation, and a Real Bug
 
-$$\frac{d\rho}{dt} = -i[H(t), \rho] + \sum_k \left( L_k \rho L_k^\dagger - \frac{1}{2}\{L_k^\dagger L_k, \rho\} \right)$$
+$$\frac{d\rho}{dt} = -i[H(t), \rho] + \sum_k \left( L_k \rho L_k^\dagger - \frac{1}{2}\lbrace L_k^\dagger L_k, \rho\rbrace \right)$$
 
 | Channel | Operator (`utils.py: build_collapse_operators`) | Rate |
 |---|---|---|
 | $T_1$ relaxation | $L_1=\sqrt{\Gamma_1}\cdot a$ | $\Gamma_1=1/T_1$ |
-| $T_2^*$ dephasing | $L_2=\sqrt{2\Gamma_\phi}\cdot n$ | $\Gamma_\phi=\frac{1}{T_2}-\frac{\Gamma_1}{2}$ |
+| $T_2^{\ast}$ dephasing | $L_2=\sqrt{2\Gamma_\phi}\cdot n$ | $\Gamma_\phi=\frac{1}{T_2}-\frac{\Gamma_1}{2}$ |
 
 Default `QUBIT_PARAMS`: $T_1=1000$ ns, $T_2=500$ ns, $\Omega_{\max}=0.35$ rad/ns. This is an aggressive noise regime, chosen so that decoherence, leakage and miscalibration all matter within a 10 ns gate. It does not represent state-of-the-art hardware.
 
@@ -78,7 +78,7 @@ Fidelity **peaks at 20 ns and drops for shorter gates**. Leakage overtakes decoh
 |---|---|
 | State $s_t$ | 8-D generalized Bloch vector $\in[-1,1]^8$: $[P_1,P_2,\text{Re }\rho_{01},\text{Im }\rho_{01},\text{Re }\rho_{12},\text{Im }\rho_{12},\text{Re }\rho_{02},\text{Im }\rho_{02}]$ |
 | Action $a_t$ | $(a_x,a_y)\in[-1,1]^2 \to \Omega_{x,y}=a_{x,y}\cdot\Omega_{\max}$ |
-| Reward $r_t$ | $-\lambda(\Omega_x^2+\Omega_y^2) - \mu P_2$ every step, $+F(\rho_T,|1\rangle)$ at the end ($\lambda=0.01$, $\mu=1.0$) |
+| Reward $r_t$ | $-\lambda(\Omega_x^2+\Omega_y^2) - \mu P_2$ every step, $+F(\rho_T,\vert 1\rangle)$ at the end ($\lambda=0.01$, $\mu=1.0$) |
 | Episode | $N=10$ steps $\times$ $dt=1$ ns $=$ 10 ns gate |
 
 A $3\times3$ density matrix has $3^2-1=8$ real degrees of freedom, so $s_t$ is a *sufficient* Markovian state. The Lindblad equation is itself Markovian, and the phonon-bath correlation time (~ps) is much shorter than the 10 ns gate. Commands pass through a first-order RC bandwidth filter ($\tau_{\text{AWG}}=0.5$ ns) before reaching the Hamiltonian, so there are no instantaneous jumps.
@@ -95,7 +95,7 @@ A single GRAPE baseline cannot say anything reliable about *why* RL wins. (a) GR
 
 1. **Naive constant pulse.** Analytic, leakage-blind, exactly resonant I-only $\pi$-pulse. The floor.
 2. **GRAPE (nominal-only).** 20-parameter piecewise-constant $(\Omega_x,\Omega_y)$, L-BFGS-B, multi-start (random restarts over the full $[-1,1]$ range) against the *nominal* qubit only. It never sees the miscalibration distribution.
-3. **Ensemble (robust) GRAPE.** Same parameterisation, optimised for *average* reward over a deterministic $3\times3$ quadrature grid over $(\Delta,g)$ at $\{-1,0,+1\}\sigma$. A sample-average approximation of the expectation, still open-loop. The fair baseline for question (a).
+3. **Ensemble (robust) GRAPE.** Same parameterisation, optimised for *average* reward over a deterministic $3\times3$ quadrature grid over $(\Delta,g)$ at $\lbrace -1,0,+1\rbrace \sigma$. A sample-average approximation of the expectation, still open-loop. The fair baseline for question (a).
 4. **RL (live/closed-loop).** PPO, fresh miscalibration every episode, observing $s_t$ every step.
 5. **RL (frozen/open-loop).** Controller 4's trained policy, rolled out *once* on the nominal qubit, waveform frozen and replayed open-loop like GRAPE. If 4's edge is a better waveform, freezing barely changes it. If it is live reaction, freezing removes it. This answers question (b).
 
@@ -176,7 +176,7 @@ We checked whether $\Omega_y(t)\approx-\dot\Omega_x(t)/\alpha$ (correlation plus
 | 4 | +0.58 | -10.77 |
 | **Mean ± std** | **+0.40 ± 0.47** | **-6.51 ± 5.35** |
 
-**Mostly no, with one real exception.** 4 of 5 seeds show strongly negative $R^2$. Derivative-DRAG is a far worse predictor than the mean. Seed 3 breaks the pattern: correlation +0.86 *and* $R^2=+0.73$, a genuinely good fit. (Correlation alone is weaker evidence. Seeds 1 and 4 also correlate well but still fit poorly, because correlation ignores a constant offset that the no-intercept $R^2$ fit does not. Seed 3 is the only one where both agree.) The other four learn a magnitude/phase-modulated drive instead: $|\Omega_x+i\Omega_y|$ decays from $\approx0.39$-$0.49$ to $\approx0.15$-$0.17$ rad/ns over the pulse in all 5 seeds, at a phase that is roughly constant *within* a seed but spans nearly the full circle *across* seeds ($\approx-70°,+8°,+100°,-158°,+112°$ for seeds 0-4). This is consistent with an arbitrary, seed-dependent I/Q reference choice rather than a rediscovered physical relationship, except that one of five independent runs found something close to the closed-form correction anyway.
+**Mostly no, with one real exception.** 4 of 5 seeds show strongly negative $R^2$. Derivative-DRAG is a far worse predictor than the mean. Seed 3 breaks the pattern: correlation +0.86 *and* $R^2=+0.73$, a genuinely good fit. (Correlation alone is weaker evidence. Seeds 1 and 4 also correlate well but still fit poorly, because correlation ignores a constant offset that the no-intercept $R^2$ fit does not. Seed 3 is the only one where both agree.) The other four learn a magnitude/phase-modulated drive instead: $|\Omega_x+i\Omega_y|$ decays over the pulse in all 5 seeds, from roughly 0.39 to 0.49 rad/ns at the start down to roughly 0.15 to 0.17 rad/ns at the end, at a phase that is roughly constant *within* a seed but spans nearly the full circle *across* seeds ($\approx-70^\circ,+8^\circ,+100^\circ,-158^\circ,+112^\circ$ for seeds 0-4). This is consistent with an arbitrary, seed-dependent I/Q reference choice rather than a rediscovered physical relationship, except that one of five independent runs found something close to the closed-form correction anyway.
 
 ---
 
